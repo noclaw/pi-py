@@ -1,0 +1,10 @@
+[project]
+name = "pi-py"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+pi-ai = { workspace = true }
