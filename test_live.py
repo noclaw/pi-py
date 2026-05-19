@@ -91,6 +91,26 @@ async def test_abort(model_id: str, provider: str = "anthropic") -> None:
     print("✓ abort test passed")
 
 
+async def test_image_generation(model_id: str, provider: str = "openrouter") -> None:
+    model = pi_ai.get_image_model(provider, model_id)
+    ctx = pi_ai.ImagesContext(
+        input=[pi_ai.TextContent(text="A small red circle on a plain white background.")]
+    )
+    print(f"\n=== {provider}/{model_id} — image generation ===")
+    result = await pi_ai.generate_images(model, ctx)
+    print(f"→ stop_reason={result.stop_reason}")
+    if result.error_message:
+        print(f"✗ ERROR: {result.error_message}")
+        return
+    for block in result.output:
+        if isinstance(block, pi_ai.TextContent):
+            print(f"→ text: {block.text[:80]}")
+        elif isinstance(block, pi_ai.ImageContent):
+            print(f"→ image: {block.mime_type}, {len(block.data)} base64 chars")
+    if result.usage:
+        print(f"→ cost: ${result.usage.cost.total:.6f}")
+
+
 async def main() -> None:
     import os
     has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_OAUTH_TOKEN"))
@@ -109,6 +129,12 @@ async def main() -> None:
     if has_openai:
         await test_text("gpt-4o-mini", "openai")
         await test_tools("gpt-4o-mini", "openai")
+
+    has_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
+    if has_openrouter:
+        await test_image_generation("google/gemini-2.5-flash-image", "openrouter")
+    else:
+        print("\nSet OPENROUTER_API_KEY to test image generation")
 
 
 if __name__ == "__main__":

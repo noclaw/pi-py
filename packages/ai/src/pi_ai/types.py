@@ -164,6 +164,55 @@ class Model(BaseModel):
     compat: Optional[Union[OpenAICompletionsCompat, AnthropicMessagesCompat]] = None
 
 
+# ── Image generation types ────────────────────────────────────────────────────
+
+ImagesStopReason = Literal["stop", "error", "aborted"]
+
+
+class ImagesModel(BaseModel):
+    """Metadata for an image-generation model."""
+    id: str
+    name: str
+    api: str            # e.g. "openrouter-images"
+    provider: str
+    base_url: str
+    input: list[Literal["text", "image"]] = Field(default_factory=lambda: ["text"])
+    output: list[Literal["text", "image"]] = Field(default_factory=lambda: ["image"])
+    cost: ModelCost
+    headers: Optional[dict[str, str]] = None
+
+
+class ImagesContext(BaseModel):
+    """Input context for image generation."""
+    input: list[Union[TextContent, ImageContent]]
+
+
+class AssistantImages(BaseModel):
+    """Result of a generate_images() call."""
+    api: str
+    provider: str
+    model: str
+    output: list[Union[TextContent, ImageContent]] = Field(default_factory=list)
+    response_id: Optional[str] = None
+    usage: Optional[Usage] = None
+    stop_reason: ImagesStopReason = "stop"
+    error_message: Optional[str] = None
+    timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
+
+
+class ImagesOptions(BaseModel):
+    """Options for generate_images()."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    api_key: Optional[str] = None
+    signal: Optional[Any] = None
+    on_payload: Optional[Any] = None   # async (payload, model) -> payload | None
+    on_response: Optional[Any] = None  # async (response_info, model) -> None
+    headers: Optional[dict[str, str]] = None
+    timeout_ms: Optional[int] = None
+    max_retries: Optional[int] = None
+
+
 # ── Stream options ────────────────────────────────────────────────────────────
 
 class StreamOptions(BaseModel):
