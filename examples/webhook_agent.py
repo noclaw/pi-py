@@ -8,7 +8,7 @@ Requirements:
     pip install fastapi uvicorn
 
 Usage:
-    uvicorn examples.webhook_agent:app --port 8080
+    uv run uvicorn examples.webhook_agent:app --port 8080
 
     # Run a task
     curl -X POST http://localhost:8080/run \\

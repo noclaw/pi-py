@@ -5,10 +5,10 @@ exist or appending a new entry with a timestamp. Useful for quick journaling,
 meeting notes, or a daily log in an Obsidian vault.
 
 Usage:
-    python examples/journal.py ~/notes "Had a productive standup today"
-    python examples/journal.py ~/notes          # reads entry from stdin
-    python examples/journal.py ~/notes --file   # opens $EDITOR
-    python examples/journal.py ~/notes --list   # show recent entries
+    uv run python examples/journal.py ~/notes "Had a productive standup today"
+    uv run python examples/journal.py ~/notes          # reads entry from stdin
+    uv run python examples/journal.py ~/notes --file   # opens $EDITOR
+    uv run python examples/journal.py ~/notes --list   # show recent entries
 """
 import argparse
 import asyncio

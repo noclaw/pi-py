@@ -4,9 +4,9 @@ The simplest pi-agent usage: ask a question, print the answer, exit.
 Model and auth are resolved from ~/.pi/agent/ automatically.
 
 Usage:
-    python examples/ask.py "What is the capital of France?"
-    python examples/ask.py --model anthropic:claude-haiku-4-5 "Explain closures"
-    python examples/ask.py --tools "Summarise the README in this directory"
+    uv run python examples/ask.py "What is the capital of France?"
+    uv run python examples/ask.py --model anthropic:claude-haiku-4-5 "Explain closures"
+    uv run python examples/ask.py --tools "Summarise the README in this directory"
 """
 import argparse
 import asyncio

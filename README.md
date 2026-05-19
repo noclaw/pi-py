@@ -167,21 +167,19 @@ Runnable scripts in [`examples/`](examples/) demonstrate common personal-agent p
 | [`webhook_agent.py`](examples/webhook_agent.py) | FastAPI endpoint → agent → JSON response; also streams as Server-Sent Events |
 
 ```bash
-# Ask a one-shot question
+# Examples run inside the uv virtual environment:
+uv run python examples/ask.py "What is the capital of France?"
+uv run python examples/chat.py
+uv run python examples/chat.py --session abc12345   # resume
+uv run python examples/codebase_qa.py /path/to/project "What does this codebase do?"
+uv run python examples/journal.py ~/notes "Shipped the new feature today"
+
+# Or activate the venv once and use plain python:
+source .venv/bin/activate
 python examples/ask.py "What is the capital of France?"
 
-# Interactive chat with session persistence
-python examples/chat.py
-python examples/chat.py --session abc12345   # resume
-
-# Answer questions about a codebase
-python examples/codebase_qa.py /path/to/project "What does this codebase do?"
-
-# Append a journal entry
-python examples/journal.py ~/notes "Shipped the new feature today"
-
-# Run as a web service (requires: pip install fastapi uvicorn)
-uvicorn examples.webhook_agent:app --port 8080
+# Web service (requires: pip install fastapi uvicorn)
+uv run uvicorn examples.webhook_agent:app --port 8080
 curl -X POST http://localhost:8080/run \
   -H "Content-Type: application/json" \
   -d '{"prompt": "List the Python files in /tmp"}'

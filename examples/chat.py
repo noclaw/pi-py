@@ -5,10 +5,10 @@ by their session ID. File and shell tools are enabled by default so
 the agent can read files, run commands, etc.
 
 Usage:
-    python examples/chat.py                        # new session
-    python examples/chat.py --session abc12345     # resume session
-    python examples/chat.py --no-tools             # text-only, no file access
-    python examples/chat.py --cwd /my/project      # set working directory
+    uv run python examples/chat.py                        # new session
+    uv run python examples/chat.py --session abc12345     # resume session
+    uv run python examples/chat.py --no-tools             # text-only, no file access
+    uv run python examples/chat.py --cwd /my/project      # set working directory
 
 Commands during chat:
     /session    show current session ID

@@ -4,9 +4,9 @@ Loads CLAUDE.md / AGENTS.md from the project path into the system prompt
 and enables the read/grep/find/ls tools so the agent can explore the code.
 
 Usage:
-    python examples/codebase_qa.py /path/to/project "What does this codebase do?"
-    python examples/codebase_qa.py /path/to/project  # interactive mode
-    python examples/codebase_qa.py .                 # current directory
+    uv run python examples/codebase_qa.py /path/to/project "What does this codebase do?"
+    uv run python examples/codebase_qa.py /path/to/project  # interactive mode
+    uv run python examples/codebase_qa.py .                 # current directory
 """
 import argparse
 import asyncio
