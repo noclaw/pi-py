@@ -147,7 +147,7 @@ result = {
 
 ---
 
-## Phase 8 — Personal agent examples
+## Phase 8 — Personal agent examples ✓ DONE
 
 Short, self-contained scripts that demonstrate common personal-agent patterns.
 Placed in `examples/` at the repo root.

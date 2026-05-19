@@ -154,6 +154,41 @@ pi-py models list
 
 ---
 
+## Examples
+
+Runnable scripts in [`examples/`](examples/) demonstrate common personal-agent patterns.
+
+| Script | What it shows |
+|---|---|
+| [`ask.py`](examples/ask.py) | One-shot prompt — simplest possible usage |
+| [`chat.py`](examples/chat.py) | Interactive REPL with persistent sessions and `/clear`/`/session` commands |
+| [`codebase_qa.py`](examples/codebase_qa.py) | Q&A about a codebase with read-only tools; loads `CLAUDE.md` context automatically |
+| [`journal.py`](examples/journal.py) | Append a dated entry to a daily markdown note (Obsidian-compatible) |
+| [`webhook_agent.py`](examples/webhook_agent.py) | FastAPI endpoint → agent → JSON response; also streams as Server-Sent Events |
+
+```bash
+# Ask a one-shot question
+python examples/ask.py "What is the capital of France?"
+
+# Interactive chat with session persistence
+python examples/chat.py
+python examples/chat.py --session abc12345   # resume
+
+# Answer questions about a codebase
+python examples/codebase_qa.py /path/to/project "What does this codebase do?"
+
+# Append a journal entry
+python examples/journal.py ~/notes "Shipped the new feature today"
+
+# Run as a web service (requires: pip install fastapi uvicorn)
+uvicorn examples.webhook_agent:app --port 8080
+curl -X POST http://localhost:8080/run \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "List the Python files in /tmp"}'
+```
+
+---
+
 ## Settings files
 
 `pi-agent` reads three optional JSON files from `~/.pi/agent/` (or a custom
