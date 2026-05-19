@@ -93,6 +93,7 @@ class ToolResultMessage(BaseModel):
     tool_call_id: str
     tool_name: str
     content: list[Union[TextContent, ImageContent]] = Field(default_factory=list)
+    details: Optional[Any] = None
     is_error: bool = False
     timestamp: int = Field(default_factory=lambda: int(time.time() * 1000))
 
