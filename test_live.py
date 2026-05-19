@@ -115,9 +115,10 @@ async def main() -> None:
     import os
     has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_OAUTH_TOKEN"))
     has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+    has_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
 
-    if not has_anthropic and not has_openai:
-        print("Set ANTHROPIC_API_KEY, ANTHROPIC_OAUTH_TOKEN, or OPENAI_API_KEY to run live tests.")
+    if not has_anthropic and not has_openai and not has_openrouter:
+        print("Set ANTHROPIC_API_KEY, ANTHROPIC_OAUTH_TOKEN, OPENAI_API_KEY, or OPENROUTER_API_KEY to run live tests.")
         return
 
     if has_anthropic:
@@ -130,7 +131,6 @@ async def main() -> None:
         await test_text("gpt-4o-mini", "openai")
         await test_tools("gpt-4o-mini", "openai")
 
-    has_openrouter = bool(os.environ.get("OPENROUTER_API_KEY"))
     if has_openrouter:
         await test_image_generation("google/gemini-2.5-flash-image", "openrouter")
     else:
