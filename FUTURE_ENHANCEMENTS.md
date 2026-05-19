@@ -1,158 +1,210 @@
 # Future Enhancements
 
-Roadmap for extending `pi_agent` toward a general-purpose coding agent.
-Based on analysis of `/Users/jeff/code/pi/packages/coding-agent`.
+Roadmap for `pi-py`.  Phases 1–4 are complete and removed from this document.
+
+The guiding philosophy: **pi-py is not a port of the full coding-agent application**.
+It is a Python library that makes LLM agents understandable and modifiable — so that
+developers can build *their own* personal agents rather than configure someone else's.
+The TypeScript `pi` / `pi coding-agent` CLI already exists and works well.  pi-py
+targets Python-native use cases: scripting, web services, integration into existing
+Python codebases, and agents that reason about Python-specific tools.
+
+Reference use case: migrating **noclaw** (`/Users/jeff/code/noclaw`) — a personal
+assistant that currently shells out to the `claude` CLI — to use pi-py directly.
+That migration drives several of the priorities below.
 
 ---
 
-## Phase 1 — Built-in tools (in progress)
+## Phase 5 — CLI (`pi-py`) — next up
 
-Create `packages/agent/src/pi_agent/tools/` with the 7 tools from the coding-agent
-and helper functions. These are the highest-value, most portable piece.
+A `click`-based command named **`pi-py`** (not `pi`, which conflicts with the
+TypeScript CLI already installed).
 
-### Tools
+### Subcommands
 
-| Tool | Schema | Key behavior |
-|---|---|---|
-| `read` | `path, offset?, limit?` | Truncates to 2000 lines / 50 KB; actionable "use offset=N to continue" messages; image detection |
-| `bash` | `command, timeout?` | Streams stdout+stderr combined; tail-truncates; writes overflow to temp file; throws on non-zero exit |
-| `edit` | `path, edits: [{old_text, new_text}]` | Multi-edit atomically; unique-match validation; BOM/CRLF handling; returns unified diff |
-| `write` | `path, content` | Creates parent dirs; overwrites |
-| `grep` | `pattern, path?, glob?, ignore_case?, literal?, context?, limit?` | Tries `rg` first, falls back to Python `re`; per-line 500-char truncation |
-| `find` | `pattern, path?, limit?` | Tries `fd` first, falls back to `pathlib`/`glob`; gitignore-aware via `pathspec` |
-| `ls` | `path?, limit?` | Sorted entries; shows kind (file/dir/symlink) |
+```
+pi-py prompt "..."            # single-shot: run once and exit (print mode)
+pi-py prompt --session <id>   # resume an existing session by ID
+pi-py sessions list           # list saved sessions
+pi-py sessions show <id>      # show transcript for a session
+pi-py models list             # list built-in + custom models
+```
 
-### Helper functions
+### Key flags
 
-- `create_tools(env, cwd=None) -> list[AgentTool]` — factory returning all 7 tools
-- `build_system_prompt(tools, context="") -> str` — assembles system prompt with tool list and guidelines
-- `load_context_files(cwd, filenames=["CLAUDE.md","AGENTS.md"]) -> str` — walks directory tree upward collecting context files
+| Flag | Description |
+|---|---|
+| `--model provider:id` | Override default model (e.g. `anthropic:claude-sonnet-4-6`) |
+| `--session <id>` | Resume an existing JSONL session by ID |
+| `--system "..."` | Append to or replace the system prompt |
+| `--cwd <path>` | Working directory (default: current dir) |
+| `--sessions-dir <path>` | Where to store sessions (default: `~/.pi/sessions`) |
+| `--settings-dir <path>` | Config dir (default: `~/.pi/agent`) |
+| `--no-tools` | Run without file/bash tools (reasoning-only) |
+| `--json` | Emit newline-delimited JSON events instead of text (for subprocess use) |
 
-### Usage pattern
+### Print mode output
+
+Without `--json`: stream assistant text to stdout, print token/cost summary to
+stderr on completion.
+
+With `--json`: emit one JSON object per line matching the `AgentEvent` dict
+structure, ending with `{"type":"agent_end", ...}`.  This allows noclaw-style
+subprocess integration with structured output — replacing the `claude
+--output-format stream-json` pattern without the Claude Code dependency.
+
+### Implementation sketch
 
 ```python
-from pi_agent.tools import create_tools, load_context_files, build_system_prompt
-from pi_agent import AgentHarness, PythonExecutionEnv, InMemorySessionRepo
-import pi_ai
+# cli.py
+import asyncio, click, pi_agent, pi_ai
 
-env  = PythonExecutionEnv(cwd="/my/project")
-tools = create_tools(env)
-context = load_context_files("/my/project")
-system_prompt = build_system_prompt(tools, context)
+@click.command()
+@click.argument("prompt_text")
+@click.option("--model", default=None)
+@click.option("--session", default=None)
+@click.option("--json", "json_output", is_flag=True)
+def prompt(prompt_text, model, session, json_output):
+    asyncio.run(_run(prompt_text, model, session, json_output))
 
-repo = InMemorySessionRepo()  # or JsonlSessionRepo for persistence
-session = await repo.create()
+async def _run(text, model_str, session_id, json_output):
+    harness = await pi_agent.create_agent(
+        model=pi_ai.get_model(*model_str.split(":")) if model_str else None,
+        session_id=session_id,   # Phase 6
+    )
+    ...
+```
 
-harness = AgentHarness(
-    env=env, session=session,
-    model=pi_ai.get_model("anthropic", "claude-sonnet-4-6"),
-    tools=tools,
-    system_prompt=system_prompt,
+Entry point in `pyproject.toml`:
+```toml
+[project.scripts]
+pi-py = "pi_agent.cli:main"
+```
+
+---
+
+## Phase 6 — Session resume in `create_agent()`
+
+`create_agent()` currently always creates a new session.  Adding `session_id`
+allows resuming an existing JSONL session — the primary enabler for the noclaw
+migration and for stateful CLI use.
+
+```python
+harness = await pi_agent.create_agent(
+    session_id="abc123",          # open existing session from sessions_dir
+    sessions_dir="~/.pi/sessions",
 )
-reply = await harness.prompt("Refactor the auth module to use JWT.")
 ```
+
+Implementation:
+- Add `session_id: str | None` and `sessions_dir: str | None` to `create_agent()`
+- When `session_id` is set: list sessions from `JsonlSessionRepo`, find the one
+  with matching ID, open it via `repo.open(metadata)`
+- When `session_id` is set but not found: raise `ValueError` with a helpful message
+  listing available session IDs
+
+This pairs with `pi-py --session <id>` in Phase 5.
 
 ---
 
-## Phase 2 — Auto-compaction trigger ✓ DONE
+## Phase 7 — `noclaw` migration guide
 
-All the pieces exist (`should_stop_after_turn`, `estimate_context_tokens`, `should_compact`,
-`compact()`). Wire them together so the harness automatically compacts when approaching
-the context window limit, without the caller having to manage it.
+noclaw (`/Users/jeff/code/noclaw`) dispatches tasks to the `claude` CLI as a
+subprocess.  pi-py already provides everything needed to replace that pattern.
 
-```python
-harness = AgentHarness(
-    ...,
-    auto_compact=True,          # new option
-    compact_reserve_tokens=16384,
-)
-```
+**What noclaw needs and where it exists in pi-py:**
 
-Implementation sketch:
-- In `_loop_config`, set `should_stop_after_turn` to check
-  `should_compact(estimate_context_tokens(messages).tokens, model.context_window, settings)`.
-- If true, fire `compact()`, update `context` via `prepare_next_turn`, and continue.
-- Surface via a new `auto_compact: bool = False` init param on `AgentHarness`.
+| noclaw requirement | pi-py equivalent |
+|---|---|
+| Run agent on a prompt | `AgentHarness.prompt()` |
+| Stream structured output | `harness.subscribe()` events |
+| Resume session by ID | Phase 6 |
+| Append system prompt | `create_agent(system_prompt=...)` |
+| Inject memory/vault context | `load_context_files()` or `system_prompt=` callable |
+| Progress file updates | `harness.on("turn_end", ...)` hook |
+| Token counts + cost | `reply.usage.total_tokens`, `reply.usage.cost.total` |
+| Model selection per request | `create_agent(model=pi_ai.get_model(...))` |
+| Session timeout | `bash` tool `timeout` param; `AgentLoopConfig` abort signal |
+| `--json` subprocess output | Phase 5 `pi-py prompt --json` |
 
----
+A concrete migration would replace `cli_session.py`'s subprocess launch with a
+direct `create_agent()` call and a `subscribe()` listener that writes the same
+`.progress/{agent_id}.log` format.  `sdk_session.py` could be replaced entirely.
 
-## Phase 3 — `create_agent()` convenience function ✓ DONE (live-tested)
-
-A one-call setup for the 90% case: `PythonExecutionEnv`, session, tools,
-context loading, and `AgentHarness` with sensible defaults.
-
-```python
-from pi_agent import create_agent
-
-harness = await create_agent(
-    cwd="/my/project",
-    model=pi_ai.get_model("anthropic", "claude-sonnet-4-6"),
-    session_dir="~/.pi/sessions",   # None = in-memory
-    tools="all",                     # or list[AgentTool]
-    context_files=["CLAUDE.md"],
-    auto_compact=True,
-)
-reply = await harness.prompt("What does this codebase do?")
-```
-
----
-
-## Phase 4 — Settings management ✓ DONE
-
-Simple JSON config files loaded and deep-merged at startup.
-
-- Global: `~/.pi/settings.json`
-- Project: `.pi/settings.json` (searched upward from cwd)
+Capturing structured results:
 
 ```python
-from pi_agent.settings import load_settings, Settings
+harness = await pi_agent.create_agent(model=model, session_id=session_id)
+reply = await harness.prompt(task_text)
 
-settings = load_settings(cwd="/my/project")
-# settings.model, settings.compaction, settings.tools, etc.
-```
-
-Settings schema (initial):
-```json
-{
-  "model": { "provider": "anthropic", "id": "claude-sonnet-4-6" },
-  "thinking_level": "off",
-  "compaction": { "enabled": true, "reserve_tokens": 16384 },
-  "tools": { "bash": { "timeout": 30 } }
+result = {
+    "status": "SUCCESS" if reply.stop_reason == "stop" else "ERROR",
+    "output": " ".join(b.text for b in reply.content if hasattr(b, "text")),
+    "tokens": reply.usage.total_tokens,
+    "cost": reply.usage.cost.total,
 }
 ```
 
 ---
 
-## Phase 5 — CLI / print mode
+## Phase 8 — Personal agent examples
 
-A `click`-based `pi` CLI for non-interactive use. Deferred until there is an
-application-level consumer of the library.
+Short, self-contained scripts that demonstrate common personal-agent patterns.
+Placed in `examples/` at the repo root.
 
-```bash
-pi prompt "Explain the auth module"      # print mode: single shot
-pi prompt --session ~/.pi/sessions/abc "Continue the refactor"
-```
+| Example | What it shows |
+|---|---|
+| `examples/ask.py` | One-shot `create_agent()` prompt, print response |
+| `examples/chat.py` | Interactive REPL loop with session persistence |
+| `examples/codebase_qa.py` | Load a repo's CLAUDE.md, answer questions about it |
+| `examples/journal.py` | Append a daily note to an Obsidian vault via file tools |
+| `examples/webhook_agent.py` | FastAPI endpoint → `create_agent()` → JSON response |
 
-Implementation: thin wrapper around `create_agent()` + `harness.prompt()`.
+The webhook example directly targets the noclaw pattern: replace the subprocess
+with a library call, keep the same HTTP interface.
 
 ---
 
-## What was explicitly NOT ported from coding-agent
+## Longer-term ideas (no phase assigned)
 
-| Component | Reason |
-|---|---|
-| TUI / interactive mode | App-specific; requires `pi-tui` or equivalent |
-| Extension plugin system | `AgentHarness.on()` / `.subscribe()` hooks cover this adequately |
-| Auth key management | `pi_ai.get_env_api_key()` covers the common case |
-| Session export to HTML | App-specific |
-| Image resizing / EXIF | App-specific; too many binary deps |
-| Telemetry | App-specific |
-| RPC server/client | App-specific |
-| Keybindings | App-specific |
+### TUI layer (`pi-tui-py`)
+A separate package inspired by `packages/tui` in the TypeScript repo.  The TS
+`pi-tui` uses differential rendering, synchronized output (CSI 2026), and an
+overlay system that Python's `curses`/`blessed`/`rich` don't match.  Could be
+built on top of `rich` or `textual` as a starting point.  Not needed for the
+core library use case but useful for interactive CLI agents.
 
-## TS source reference
+### Custom provider registration
+Users can already construct `Model(api="openai-completions", base_url=...)` for
+local servers.  A higher-level `register_provider()` function that reads a
+`models.json`-style dict and installs models into the in-process registry would
+remove the need to build `Model` objects manually.
 
-Coding-agent source: `/Users/jeff/code/pi/packages/coding-agent/src/core/tools/`
+```python
+pi_agent.register_providers_from_settings()  # reads ~/.pi/agent/models.json
+model = pi_ai.get_model("my-local", "my-model")  # now available
+```
 
-Each Python tool is a faithful port of the corresponding TS file, minus
-the `renderCall`/`renderResult` TUI methods and the `pi-tui` dependency.
+### OAuth token refresh
+`auth.json` OAuth tokens expire.  A `refresh_oauth_token(provider)` helper that
+reads the `refresh` field and calls the provider's token endpoint would remove the
+manual refresh step.  Currently the library warns on expiry and continues.
+
+### Agent-to-agent calls
+A tool that lets one agent spawn a sub-agent with a separate session and model,
+collecting its result as a tool result.  Useful for parallelising work or
+delegating to a specialised agent (e.g. a "critic" agent reviewing a "writer"
+agent's output).
+
+```python
+sub_agent_tool = create_sub_agent_tool(
+    name="review",
+    model=pi_ai.get_model("anthropic", "claude-opus-4-7"),
+    system_prompt="You are a code reviewer.",
+)
+```
+
+### Streaming to web clients
+A helper that bridges `AgentEventStream` to a Server-Sent Events or WebSocket
+response — so a FastAPI/Flask endpoint can stream agent progress directly to a
+browser without buffering the full response.
