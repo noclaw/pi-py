@@ -1,6 +1,7 @@
 # pi-py
 
-Python port of the [pi TypeScript monorepo](https://github.com/earendil-works/pi).
+Python port of the [pi TypeScript monorepo](https://github.com/earendil-works/pi).  
+Source: https://github.com/noclaw/pi-py
 
 ## Packages
 
@@ -192,7 +193,7 @@ Tests for each provider are skipped automatically when the corresponding key is 
 
 ```bash
 # Clone and install
-git clone ...
+git clone https://github.com/noclaw/pi-py.git
 cd pi-py
 uv sync --all-packages
 

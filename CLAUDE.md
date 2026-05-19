@@ -2,7 +2,8 @@
 
 ## Project overview
 
-Python port of the TypeScript monorepo at `/Users/jeff/code/pi` (GitHub: https://github.com/earendil-works/pi).
+Python port of the TypeScript monorepo at https://github.com/earendil-works/pi.  
+This repo: https://github.com/noclaw/pi-py
 
 The TS repo has two main packages. Both are candidates for Python porting:
 
