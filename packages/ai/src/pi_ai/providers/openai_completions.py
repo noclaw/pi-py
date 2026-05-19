@@ -199,6 +199,13 @@ def _parse_streaming_json(partial: str) -> dict[str, Any]:
             return {}
 
 
+# ── Provider-specific options (module-level so Pydantic resolves fields correctly) ─
+
+class OpenAIStreamOptions(StreamOptions):
+    """Extended options accepted by stream_openai_completions."""
+    reasoning_effort: Optional[str] = None
+
+
 # ── Core streaming function ───────────────────────────────────────────────────
 
 def stream_openai_completions(
@@ -357,7 +364,7 @@ def stream_openai_completions(
                 })
                 return block
 
-            signal = options.signal if options else None
+            signal = getattr(options, "signal", None)
 
             async for chunk in raw_stream:
                 if signal and getattr(signal, "is_set", lambda: False)():
@@ -497,13 +504,8 @@ def stream_simple_openai_completions(
         if level != "off":
             reasoning_effort = level
 
-    # Build provider options by merging base StreamOptions fields
     base = options.model_dump(exclude={"reasoning", "thinking_budgets"}) if options else {}
-
-    class _Options(StreamOptions):
-        reasoning_effort: Optional[str] = None
-
-    provider_opts = _Options(**base, reasoning_effort=reasoning_effort)
+    provider_opts = OpenAIStreamOptions(**base, reasoning_effort=reasoning_effort)
     return stream_openai_completions(model, context, provider_opts)
 
 

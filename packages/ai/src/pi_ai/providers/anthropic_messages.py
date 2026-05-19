@@ -28,6 +28,14 @@ from ..types import (
 from .transform_messages import normalize_tool_call_id_for_anthropic, transform_messages
 
 
+# ── Provider-specific options (module-level so Pydantic resolves fields correctly) ─
+
+class AnthropicStreamOptions(StreamOptions):
+    """Extended options accepted by stream_anthropic."""
+    thinking_enabled: bool = False
+    thinking_budget_tokens: Optional[int] = None
+
+
 # ── Compat ────────────────────────────────────────────────────────────────────
 
 def _get_compat(model: Model) -> AnthropicMessagesCompat:
@@ -278,7 +286,7 @@ def stream_anthropic(
                 # For tool calls: track partial JSON per Anthropic block index
                 tool_partial_args: dict[int, str] = {}
 
-                signal = options.signal if options else None
+                signal = getattr(options, "signal", None)
 
                 async for event in stream_mgr:
                     if signal and getattr(signal, "is_set", lambda: False)():
@@ -471,12 +479,7 @@ def stream_simple_anthropic(
             thinking_budget = budgets.get(clamped) or _DEFAULT_THINKING_BUDGETS.get(clamped)
 
     base = options.model_dump(exclude={"reasoning", "thinking_budgets"}) if options else {}
-
-    class _AnthropicOptions(StreamOptions):
-        thinking_enabled: bool = False
-        thinking_budget_tokens: Optional[int] = None
-
-    provider_opts = _AnthropicOptions(
+    provider_opts = AnthropicStreamOptions(
         **base,
         thinking_enabled=bool(thinking_budget),
         thinking_budget_tokens=thinking_budget,

@@ -172,6 +172,7 @@ class StreamOptions(BaseModel):
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
     api_key: Optional[str] = None
+    signal: Optional[Any] = None       # asyncio.Event — set it to abort the request
     cache_retention: CacheRetention = "short"
     session_id: Optional[str] = None
     on_payload: Optional[Any] = None   # async (payload, model) -> payload | None
