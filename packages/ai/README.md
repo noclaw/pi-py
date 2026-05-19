@@ -747,6 +747,10 @@ async def _run():
 asyncio.run(_run())
 ```
 
+## Credits
+
+This package is a Python port of the [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi/tree/main/packages/ai) TypeScript library. The original TypeScript implementation is the authoritative reference for provider behavior, streaming event protocol, cross-provider message transformation, and model catalog. The Python version is a simplified rewrite targeting text generation, tool calling, thinking/reasoning, and image generation via the same unified interface.
+
 ## License
 
 MIT
