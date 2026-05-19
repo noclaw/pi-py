@@ -15,7 +15,7 @@ That migration drives several of the priorities below.
 
 ---
 
-## Phase 5 — CLI (`pi-py`) — next up
+## Phase 5 — CLI (`pi-py`) ✓ DONE
 
 A `click`-based command named **`pi-py`** (not `pi`, which conflicts with the
 TypeScript CLI already installed).
@@ -83,7 +83,7 @@ pi-py = "pi_agent.cli:main"
 
 ---
 
-## Phase 6 — Session resume in `create_agent()`
+## Phase 6 — Session resume in `create_agent()` ✓ DONE
 
 `create_agent()` currently always creates a new session.  Adding `session_id`
 allows resuming an existing JSONL session — the primary enabler for the noclaw

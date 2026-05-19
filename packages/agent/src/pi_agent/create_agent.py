@@ -21,7 +21,8 @@ async def create_agent(
     *,
     model: Model | None = None,
     cwd: str | None = None,
-    session_dir: str | None = None,
+    sessions_dir: str | None = None,
+    session_id: str | None = None,
     settings_dir: str | None = None,
     tools: list[AgentTool] | Literal["all"] | None = "all",
     context_files: list[str] | None = None,
@@ -54,10 +55,14 @@ async def create_agent(
     settings_dir:
         Directory containing ``settings.json``, ``models.json``, and ``auth.json``.
         Defaults to ``~/.pi/agent``.  Pass ``None`` to use the default.
-    session_dir:
-        Directory for JSONL session persistence.
+    sessions_dir:
+        Root directory for JSONL session storage.
         ``None`` (default) uses an in-memory session that does not survive
         across process restarts.
+    session_id:
+        Resume an existing session by its ID.  Requires ``sessions_dir`` to be
+        set (or defaults to ``~/.pi/sessions``).  Raises ``ValueError`` if the
+        session cannot be found.
     tools:
         ``"all"`` (default) creates all 7 built-in tools (read, bash, edit,
         write, grep, find, ls). Pass a list of :class:`AgentTool` objects to
@@ -108,16 +113,23 @@ async def create_agent(
         harness = await pi_agent.create_agent(cwd="/my/project")
         reply = await harness.prompt("Explain the codebase structure.")
 
-    Explicit model, persistent session, custom system prompt::
+    Persistent session, custom system prompt::
 
         import pi_ai, pi_agent
 
         harness = await pi_agent.create_agent(
             cwd="/my/project",
             model=pi_ai.get_model("openai", "gpt-4o"),
-            session_dir="~/.pi/sessions",
+            sessions_dir="~/.pi/sessions",
             system_prompt="You are a security-focused code reviewer.",
             context_files=["SECURITY.md"],
+        )
+
+    Resume an existing session::
+
+        harness = await pi_agent.create_agent(
+            session_id="abc12345",
+            sessions_dir="~/.pi/sessions",
         )
     """
     resolved_cwd = os.path.abspath(cwd or os.getcwd())
@@ -161,12 +173,25 @@ async def create_agent(
         system_prompt = build_system_prompt(agent_tools or None, context)
 
     # ── Session ────────────────────────────────────────────────────────────────
-    if session_dir is None:
-        session = await InMemorySessionRepo().create()
-    else:
-        expanded = os.path.expanduser(session_dir)
+    if session_id:
+        # Resume an existing JSONL session by ID.
+        sessions_root = os.path.expanduser(sessions_dir or "~/.pi/sessions")
+        repo = JsonlSessionRepo(fs=env, sessions_root=sessions_root)
+        all_sessions = await repo.list()
+        metadata = next((s for s in all_sessions if s["id"] == session_id), None)
+        if metadata is None:
+            available = [s["id"] for s in all_sessions[:5]]
+            raise ValueError(
+                f"Session {session_id!r} not found in {sessions_root!r}.\n"
+                f"Available IDs: {available or ['(none — no sessions saved yet)']}"
+            )
+        session = await repo.open(metadata)
+    elif sessions_dir:
+        expanded = os.path.expanduser(sessions_dir)
         repo = JsonlSessionRepo(fs=env, sessions_root=expanded)
         session = await repo.create(cwd=resolved_cwd)
+    else:
+        session = await InMemorySessionRepo().create()
 
     return AgentHarness(
         env=env,

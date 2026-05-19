@@ -10,7 +10,11 @@ dependencies = [
     "pi-ai",
     "pyyaml>=6.0",
     "pathspec>=0.12",
+    "click>=8.0",
 ]
+
+[project.scripts]
+pi-py = "pi_agent.cli:main"
 
 [tool.uv.sources]
 pi-ai = { workspace = true }
