@@ -143,18 +143,39 @@ def _convert_messages(
     return messages
 
 
+def _add_additional_properties_false(schema: dict[str, Any]) -> dict[str, Any]:
+    """Recursively inject additionalProperties: false on every object schema.
+
+    Required by OpenAI when strict=True.
+    """
+    if schema.get("type") != "object":
+        return schema
+    schema = dict(schema)
+    schema.setdefault("additionalProperties", False)
+    if "properties" in schema:
+        schema["properties"] = {
+            k: _add_additional_properties_false(v) if isinstance(v, dict) else v
+            for k, v in schema["properties"].items()
+        }
+    return schema
+
+
 def _convert_tools(
     tools: list,
     compat: OpenAICompletionsCompat,
 ) -> list[dict[str, Any]]:
     result = []
     for tool in tools:
+        params = tool.parameters
+        strict = compat.supports_strict_mode
+        if strict and isinstance(params, dict):
+            params = _add_additional_properties_false(params)
         func: dict[str, Any] = {
             "name": tool.name,
             "description": tool.description,
-            "parameters": tool.parameters,
+            "parameters": params,
         }
-        if compat.supports_strict_mode:
+        if strict:
             func["strict"] = True
         result.append({"type": "function", "function": func})
     return result
