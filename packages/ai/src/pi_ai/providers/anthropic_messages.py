@@ -25,6 +25,7 @@ from ..types import (
     Usage,
     UserMessage,
 )
+from .transform_messages import normalize_tool_call_id_for_anthropic, transform_messages
 
 
 # ── Compat ────────────────────────────────────────────────────────────────────
@@ -171,11 +172,17 @@ def stream_anthropic(
             )
             compat = _get_compat(model)
 
+            import os
+            is_oauth = bool(os.environ.get("ANTHROPIC_OAUTH_TOKEN")) and api_key == os.environ.get("ANTHROPIC_OAUTH_TOKEN")
+
             client_kwargs: dict[str, Any] = {
-                "api_key": api_key,
                 "base_url": model.base_url,
                 "max_retries": (options.max_retries if options and options.max_retries is not None else 2),
             }
+            if is_oauth:
+                client_kwargs["auth_token"] = api_key
+            else:
+                client_kwargs["api_key"] = api_key
             if options and options.timeout_ms is not None:
                 client_kwargs["timeout"] = options.timeout_ms / 1000
             if model.headers:
@@ -183,14 +190,26 @@ def stream_anthropic(
 
             client = anthropic_sdk.AsyncAnthropic(**client_kwargs)
 
-            messages = _convert_messages(context)
+            # Apply cross-provider transforms (image downgrade, thinking compat,
+            # orphan tool results, tool call ID normalization for Anthropic)
+            transformed_messages = transform_messages(
+                context.messages,
+                model,
+                normalize_tool_call_id=normalize_tool_call_id_for_anthropic,
+            )
+            transformed_context = context.model_copy(update={"messages": transformed_messages})
+            messages = _convert_messages(transformed_context)
 
             # Provider-specific thinking options
             thinking_enabled: bool = getattr(options, "thinking_enabled", False)
             thinking_budget: Optional[int] = getattr(options, "thinking_budget_tokens", None)
-            effort: Optional[str] = getattr(options, "effort", None)
 
-            max_tokens = (options.max_tokens if options and options.max_tokens else None) or model.max_tokens
+            # Determine base max_tokens, then adjust upward for thinking budget
+            base_max_tokens = (options.max_tokens if options and options.max_tokens else None) or model.max_tokens
+            if thinking_budget and thinking_budget > 0:
+                max_tokens = min(base_max_tokens + thinking_budget, model.max_tokens)
+            else:
+                max_tokens = base_max_tokens
 
             params: dict[str, Any] = {
                 "model": model.id,
@@ -198,11 +217,31 @@ def stream_anthropic(
                 "messages": messages,
             }
 
+            cache_retention = (options.cache_retention if options else "short")
+
+            # System prompt — with optional cache_control for prompt caching
             if context.system_prompt:
-                params["system"] = context.system_prompt
+                if cache_retention != "none":
+                    ttl = "1h" if cache_retention == "long" and compat.supports_long_cache_retention else None
+                    cache_ctrl: dict[str, Any] = {"type": "ephemeral"}
+                    if ttl:
+                        cache_ctrl["ttl"] = ttl
+                    params["system"] = [
+                        {"type": "text", "text": context.system_prompt, "cache_control": cache_ctrl}
+                    ]
+                else:
+                    params["system"] = context.system_prompt
 
             if context.tools:
-                params["tools"] = _convert_tools(context.tools, compat)
+                converted_tools = _convert_tools(context.tools, compat)
+                # Add cache_control to the last tool when caching is enabled
+                if cache_retention != "none" and converted_tools and compat.supports_cache_control_on_tools:
+                    ttl = "1h" if cache_retention == "long" and compat.supports_long_cache_retention else None
+                    cache_ctrl = {"type": "ephemeral"}
+                    if ttl:
+                        cache_ctrl["ttl"] = ttl
+                    converted_tools[-1] = {**converted_tools[-1], "cache_control": cache_ctrl}
+                params["tools"] = converted_tools
 
             if options and options.temperature is not None:
                 params["temperature"] = options.temperature
@@ -211,13 +250,8 @@ def stream_anthropic(
                 params["metadata"] = options.metadata
 
             # Thinking configuration
-            if thinking_enabled or effort:
-                if effort:
-                    # Adaptive thinking (Claude 4)
-                    params["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget or 10000}
-                    # effort maps to betas or model-specific params — simplified here
-                else:
-                    params["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget or 10000}
+            if thinking_enabled and thinking_budget:
+                params["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
             elif thinking_budget:
                 params["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
 
@@ -244,7 +278,11 @@ def stream_anthropic(
                 # For tool calls: track partial JSON per Anthropic block index
                 tool_partial_args: dict[int, str] = {}
 
+                signal = options.signal if options else None
+
                 async for event in stream_mgr:
+                    if signal and getattr(signal, "is_set", lambda: False)():
+                        raise asyncio.CancelledError("Request aborted by signal")
                     etype = event.type
 
                     if etype == "message_start":
@@ -393,6 +431,11 @@ def stream_anthropic(
             event_stream.push({"type": "done", "reason": output.stop_reason, "message": output})
             event_stream.end()
 
+        except (asyncio.CancelledError, KeyboardInterrupt) as exc:
+            output.stop_reason = "aborted"
+            output.error_message = str(exc) or "Request was aborted"
+            event_stream.push({"type": "error", "reason": "aborted", "error": output})
+            event_stream.end()
         except Exception as exc:
             output.stop_reason = "error"
             output.error_message = str(exc)
@@ -419,30 +462,24 @@ def stream_simple_anthropic(
     context: Context,
     options: Optional[SimpleStreamOptions] = None,
 ) -> AssistantMessageEventStream:
-    level: Optional[str] = None
-    effort: Optional[str] = None
     thinking_budget: Optional[int] = None
 
     if options and options.reasoning and model.reasoning:
         clamped = clamp_thinking_level(model, options.reasoning)
         if clamped != "off":
-            level = clamped
             budgets = (options.thinking_budgets or {}) if options else {}
             thinking_budget = budgets.get(clamped) or _DEFAULT_THINKING_BUDGETS.get(clamped)
-            effort = clamped  # Anthropic uses effort string directly for Claude 4
 
     base = options.model_dump(exclude={"reasoning", "thinking_budgets"}) if options else {}
 
     class _AnthropicOptions(StreamOptions):
         thinking_enabled: bool = False
         thinking_budget_tokens: Optional[int] = None
-        effort: Optional[str] = None
 
     provider_opts = _AnthropicOptions(
         **base,
-        thinking_enabled=bool(level),
+        thinking_enabled=bool(thinking_budget),
         thinking_budget_tokens=thinking_budget,
-        effort=effort,
     )
     return stream_anthropic(model, context, provider_opts)
 

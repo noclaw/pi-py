@@ -25,6 +25,7 @@ from ..types import (
     Usage,
     UserMessage,
 )
+from .transform_messages import transform_messages
 
 
 # ── Compat resolution ─────────────────────────────────────────────────────────
@@ -233,7 +234,10 @@ def stream_openai_completions(
 
             client = AsyncOpenAI(**client_kwargs)
 
-            messages = _convert_messages(context, compat)
+            # Apply cross-provider message transforms before conversion
+            transformed_messages = transform_messages(context.messages, model)
+            transformed_context = context.model_copy(update={"messages": transformed_messages})
+            messages = _convert_messages(transformed_context, compat)
 
             params: dict[str, Any] = {
                 "model": model.id,
@@ -246,9 +250,19 @@ def stream_openai_completions(
             if compat.supports_store:
                 params["store"] = False
 
-            if options and options.max_tokens:
+            # Use model.max_tokens as default when caller doesn't specify
+            max_tokens = (options.max_tokens if options else None) or model.max_tokens
+            if max_tokens:
                 field = compat.max_tokens_field
-                params[field] = options.max_tokens
+                params[field] = max_tokens
+
+            # Session-based prompt cache key (OpenAI)
+            cache_retention = (options.cache_retention if options else "short")
+            if cache_retention != "none" and options and options.session_id:
+                if "api.openai.com" in model.base_url.lower():
+                    params["prompt_cache_key"] = options.session_id
+                    if cache_retention == "long":
+                        params["prompt_cache_retention"] = "24h"
 
             if options and options.temperature is not None:
                 params["temperature"] = options.temperature
@@ -343,7 +357,11 @@ def stream_openai_completions(
                 })
                 return block
 
+            signal = options.signal if options else None
+
             async for chunk in raw_stream:
+                if signal and getattr(signal, "is_set", lambda: False)():
+                    raise asyncio.CancelledError("Request aborted by signal")
                 output.response_id = output.response_id or chunk.id
                 if chunk.model and chunk.model != model.id:
                     output.response_model = output.response_model or chunk.model
@@ -451,6 +469,11 @@ def stream_openai_completions(
             event_stream.push({"type": "done", "reason": output.stop_reason, "message": output})
             event_stream.end()
 
+        except (asyncio.CancelledError, KeyboardInterrupt) as exc:
+            output.stop_reason = "aborted"
+            output.error_message = str(exc) or "Request was aborted"
+            event_stream.push({"type": "error", "reason": "aborted", "error": output})
+            event_stream.end()
         except Exception as exc:
             output.stop_reason = "error"
             output.error_message = str(exc)
