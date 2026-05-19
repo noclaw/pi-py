@@ -28,6 +28,7 @@ from .types import (
     Usage,
     UserMessage,
 )
+from .env_keys import get_env_api_key
 from .models import (
     calculate_cost,
     clamp_thinking_level,
@@ -35,7 +36,10 @@ from .models import (
     get_models,
     get_providers,
     get_supported_thinking_levels,
+    is_context_overflow,
+    models_are_equal,
 )
+from .validation import string_enum, validate_tool_call
 from .image_models import (
     get_image_model,
     get_image_models,
@@ -150,6 +154,12 @@ __all__ = [
     "calculate_cost",
     "clamp_thinking_level",
     "get_supported_thinking_levels",
+    "models_are_equal",
+    "is_context_overflow",
+    # Utilities
+    "get_env_api_key",
+    "validate_tool_call",
+    "string_enum",
     # Image model registry
     "get_image_model",
     "get_image_models",

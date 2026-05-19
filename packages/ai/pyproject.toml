@@ -8,6 +8,7 @@ dependencies = [
     "anthropic>=0.40.0",
     "pydantic>=2.0.0",
     "json-repair>=0.30.0",
+    "jsonschema>=4.0.0",
 ]
 
 [project.optional-dependencies]

@@ -1,8 +1,6 @@
 # pi-ai
 
-Unified LLM API for Python with streaming, tool calling, thinking/reasoning, and token and cost tracking.
-
-> **Phase 1** — text generation via OpenAI, Anthropic, and OpenAI-compatible providers is complete. Image generation (Phase 3) and additional providers are planned.
+Unified LLM API for Python with streaming, tool calling, thinking/reasoning, image generation, and token and cost tracking.
 
 ## Table of Contents
 
@@ -12,15 +10,18 @@ Unified LLM API for Python with streaming, tool calling, thinking/reasoning, and
 - [Tools](#tools)
   - [Defining Tools](#defining-tools)
   - [Handling Tool Calls](#handling-tool-calls)
+  - [Validating Tool Arguments](#validating-tool-arguments)
   - [Streaming Tool Calls with Partial JSON](#streaming-tool-calls-with-partial-json)
   - [Complete Event Reference](#complete-event-reference)
 - [Image Input](#image-input)
+- [Image Generation](#image-generation)
 - [Thinking/Reasoning](#thinkingreasoning)
   - [Unified Interface](#unified-interface-stream_simplecomplete_simple)
   - [Streaming Thinking Content](#streaming-thinking-content)
 - [Stop Reasons](#stop-reasons)
 - [Error Handling](#error-handling)
   - [Aborting Requests](#aborting-requests)
+  - [Context Overflow Detection](#context-overflow-detection)
 - [APIs, Models, and Providers](#apis-models-and-providers)
   - [Providers and Models](#providers-and-models)
   - [Querying Providers and Models](#querying-providers-and-models)
@@ -33,12 +34,16 @@ Unified LLM API for Python with streaming, tool calling, thinking/reasoning, and
 
 ## Supported Providers
 
+**Text generation:**
 - **OpenAI** — GPT-4o, GPT-4.1, o3, o4-mini, and more
 - **Anthropic** — Claude Opus, Sonnet, Haiku (4.x series)
 - **DeepSeek** — V4 Flash, V4 Pro (via OpenAI-compatible API)
 - **Groq** — Llama 3.x (via OpenAI-compatible API)
 - **Cerebras** — Llama 3.1 (via OpenAI-compatible API)
 - **Any OpenAI-compatible API** — Ollama, vLLM, LM Studio, LiteLLM, etc.
+
+**Image generation:**
+- **OpenRouter** — FLUX.2, Gemini image models, GPT Image 1, Recraft V3, and more
 
 ## Installation
 
@@ -52,7 +57,7 @@ Or with [uv](https://docs.astral.sh/uv/):
 uv add pi-ai
 ```
 
-Dependencies: `openai`, `anthropic`, `pydantic`, `json-repair`.
+Dependencies: `openai`, `anthropic`, `pydantic`, `json-repair`, `jsonschema`.
 
 ## Quick Start
 
@@ -112,7 +117,6 @@ async def main():
     for call in tool_calls:
         from datetime import datetime
         result = datetime.now().isoformat()
-
         context.messages.append(
             pi_ai.ToolResultMessage(
                 tool_call_id=call.id,
@@ -142,7 +146,7 @@ asyncio.run(main())
 
 ### Defining Tools
 
-Tools use plain JSON Schema dicts for their `parameters` field:
+Tools use plain JSON Schema dicts for their `parameters` field. Use `string_enum()` for enum fields — it generates a `{"type": "string", "enum": [...]}` schema compatible with all providers (some reject the `anyOf/const` pattern that TypeScript tools may produce):
 
 ```python
 weather_tool = pi_ai.Tool(
@@ -152,7 +156,7 @@ weather_tool = pi_ai.Tool(
         "type": "object",
         "properties": {
             "location": {"type": "string", "description": "City name or coordinates"},
-            "units": {"type": "string", "enum": ["celsius", "fahrenheit"], "default": "celsius"},
+            "units": pi_ai.string_enum(["celsius", "fahrenheit"], default="celsius"),
         },
         "required": ["location"],
     },
@@ -190,8 +194,6 @@ response = await pi_ai.complete(model, context)
 for block in response.content:
     if isinstance(block, pi_ai.ToolCall):
         result = await execute_weather_api(block.arguments)
-
-        # Text result
         context.messages.append(
             pi_ai.ToolResultMessage(
                 tool_call_id=block.id,
@@ -217,6 +219,32 @@ context.messages.append(
         is_error=False,
     )
 )
+```
+
+### Validating Tool Arguments
+
+Use `validate_tool_call()` to validate arguments against a tool's JSON Schema before executing. It raises `ValueError` with a descriptive message on failure — return that message to the model as an error result so it can retry:
+
+```python
+for block in response.content:
+    if isinstance(block, pi_ai.ToolCall):
+        try:
+            args = pi_ai.validate_tool_call(context.tools, block)
+            result = await execute_tool(block.name, args)
+            context.messages.append(pi_ai.ToolResultMessage(
+                tool_call_id=block.id,
+                tool_name=block.name,
+                content=[pi_ai.TextContent(text=str(result))],
+                is_error=False,
+            ))
+        except ValueError as e:
+            # Return the validation error to the model so it can retry
+            context.messages.append(pi_ai.ToolResultMessage(
+                tool_call_id=block.id,
+                tool_name=block.name,
+                content=[pi_ai.TextContent(text=str(e))],
+                is_error=True,
+            ))
 ```
 
 ### Streaming Tool Calls with Partial JSON
@@ -294,6 +322,78 @@ for block in response.content:
         print(block.text)
 ```
 
+## Image Generation
+
+Image generation uses a separate API surface. Use `get_image_model()` to look up a model and `generate_images()` to call it. Unlike `stream()`, this is a one-shot async call — no streaming.
+
+```python
+import asyncio
+import pi_ai
+
+async def main():
+    # Discover available image providers and models
+    print(pi_ai.get_image_providers())          # ['openrouter']
+    for m in pi_ai.get_image_models("openrouter"):
+        print(m.id, "input:", m.input, "output:", m.output)
+
+    model = pi_ai.get_image_model("openrouter", "google/gemini-2.5-flash-image")
+
+    result = await pi_ai.generate_images(
+        model,
+        pi_ai.ImagesContext(
+            input=[pi_ai.TextContent(text="A small red circle on a white background.")]
+        ),
+        pi_ai.ImagesOptions(api_key="your-openrouter-key"),
+    )
+
+    print("stop_reason:", result.stop_reason)
+    for block in result.output:
+        if isinstance(block, pi_ai.TextContent):
+            print("text:", block.text)
+        elif isinstance(block, pi_ai.ImageContent):
+            # block.data is base64-encoded, block.mime_type is e.g. "image/png"
+            import base64
+            open("output.png", "wb").write(base64.b64decode(block.data))
+            print(f"saved image ({block.mime_type})")
+
+    if result.usage:
+        print(f"cost: ${result.usage.cost.total:.6f}")
+
+asyncio.run(main())
+```
+
+Some models accept image input for editing or variation:
+
+```python
+import base64
+
+input_bytes = open("input.png", "rb").read()
+result = await pi_ai.generate_images(
+    model,
+    pi_ai.ImagesContext(input=[
+        pi_ai.TextContent(text="Change the background to blue"),
+        pi_ai.ImageContent(
+            data=base64.b64encode(input_bytes).decode(),
+            mime_type="image/png",
+        ),
+    ]),
+)
+```
+
+Check `model.input` and `model.output` to see what a model accepts and produces:
+
+```python
+model = pi_ai.get_image_model("openrouter", "google/gemini-2.5-flash-image")
+print(model.input)   # ['text', 'image']
+print(model.output)  # ['image', 'text']
+```
+
+Use `generate_images_sync()` from non-async code:
+
+```python
+result = pi_ai.generate_images_sync(model, context, options)
+```
+
 ## Thinking/Reasoning
 
 Many models support extended thinking. Check `model.reasoning` to see if the model supports it.
@@ -306,7 +406,6 @@ model = pi_ai.get_model("anthropic", "claude-sonnet-4-6")
 if model.reasoning:
     print("Model supports reasoning/thinking")
 
-# Use the unified reasoning option
 response = await pi_ai.complete_simple(
     model,
     pi_ai.Context(messages=[pi_ai.UserMessage(content="Solve: 2x + 5 = 13")]),
@@ -401,7 +500,23 @@ async for event in s:
         print(f"\n{event['reason']}: {event['error'].error_message}")
 ```
 
-> **Note:** Abort signal support (`signal` option) requires provider-level integration and is currently passed through to the underlying SDK's abort mechanism.
+### Context Overflow Detection
+
+`is_context_overflow()` detects when a request failed because the input exceeded the model's context window, using provider-neutral error message patterns (Anthropic, OpenAI, Groq, Google, and many others):
+
+```python
+message = await pi_ai.complete(model, context)
+
+if pi_ai.is_context_overflow(message):
+    print("Context too long — truncate or summarise earlier messages")
+elif message.stop_reason == "error":
+    print("Other error:", message.error_message)
+
+# Pass context_window to also detect silent overflow (provider accepted
+# the request but usage.input exceeded the window)
+if pi_ai.is_context_overflow(message, context_window=model.context_window):
+    print("Silent overflow detected via token count")
+```
 
 ## APIs, Models, and Providers
 
@@ -409,6 +524,7 @@ Built-in API implementations:
 
 - **`anthropic-messages`** — Anthropic Messages API
 - **`openai-completions`** — OpenAI Chat Completions API (also used for OpenAI-compatible endpoints)
+- **`openrouter-images`** — OpenRouter image generation API
 
 ### Providers and Models
 
@@ -416,27 +532,33 @@ A **provider** offers models through a specific API:
 - **Anthropic** models use `anthropic-messages`
 - **OpenAI** models use `openai-completions`
 - **DeepSeek, Groq, Cerebras** use `openai-completions` (OpenAI-compatible)
+- **OpenRouter** image models use `openrouter-images`
 
 ### Querying Providers and Models
 
 ```python
 import pi_ai
 
-# All available providers
-providers = pi_ai.get_providers()
-print(providers)  # ['openai', 'anthropic', 'deepseek', 'groq', 'cerebras']
+# Text providers and models
+print(pi_ai.get_providers())   # ['openai', 'anthropic', 'deepseek', 'groq', 'cerebras']
 
-# All models for a provider
 for model in pi_ai.get_models("anthropic"):
     print(f"{model.id}: {model.name}")
-    print(f"  API: {model.api}")
-    print(f"  Context: {model.context_window} tokens")
-    print(f"  Vision: {'image' in model.input}")
-    print(f"  Reasoning: {model.reasoning}")
+    print(f"  API: {model.api}, context: {model.context_window}, reasoning: {model.reasoning}")
 
-# Specific model
 model = pi_ai.get_model("openai", "gpt-4o-mini")
 print(f"Using {model.name} via {model.api}")
+
+# Image providers and models
+print(pi_ai.get_image_providers())  # ['openrouter']
+
+for m in pi_ai.get_image_models("openrouter"):
+    print(f"{m.id}: input={m.input} output={m.output}")
+
+# Check if two model references point to the same model
+m1 = pi_ai.get_model("anthropic", "claude-haiku-4-5")
+m2 = pi_ai.get_model("anthropic", "claude-haiku-4-5")
+print(pi_ai.models_are_equal(m1, m2))  # True
 ```
 
 ### Custom Models
@@ -478,29 +600,12 @@ litellm_model = Model(
     ),
 )
 
-# Custom endpoint with auth headers
-proxy_model = Model(
-    id="claude-sonnet-4-6",
-    name="Claude Sonnet 4.6 (Proxied)",
-    api="anthropic-messages",
-    provider="custom-proxy",
-    base_url="https://proxy.example.com",
-    reasoning=True,
-    input=["text", "image"],
-    cost=ModelCost(input=3, output=15, cache_read=0.3, cache_write=3.75),
-    context_window=200_000,
-    max_tokens=8_192,
-    headers={"X-Custom-Auth": "bearer-token-here"},
-)
-
 response = await pi_ai.complete(ollama_model, context, pi_ai.StreamOptions(api_key="dummy"))
 ```
 
-For reasoning models on OpenAI-compatible servers that do not support `developer` role or `reasoning_effort`, set those compat flags explicitly:
+For reasoning models on OpenAI-compatible servers that do not support `developer` role or `reasoning_effort`:
 
 ```python
-from pi_ai import OpenAICompletionsCompat
-
 custom_reasoning_model = Model(
     id="my-reasoning-model",
     name="Custom Reasoning Model",
@@ -513,10 +618,8 @@ custom_reasoning_model = Model(
     context_window=131_072,
     max_tokens=32_000,
     thinking_level_map={
-        "minimal": None,
-        "low": None,
-        "medium": None,
-        "high": "high",
+        "minimal": None, "low": None, "medium": None,
+        "high": "high",  # maps to provider's own value
         "xhigh": None,
     },
     compat=OpenAICompletionsCompat(
@@ -529,7 +632,7 @@ custom_reasoning_model = Model(
 
 ### OpenAI Compatibility Settings
 
-The `openai-completions` API is implemented by many providers with minor differences. Settings are auto-detected from `base_url` for known providers (DeepSeek, Groq, Cerebras). Override via `compat` for custom endpoints:
+Auto-detected from `base_url` for known providers. Override via `compat` for custom endpoints:
 
 ```python
 class OpenAICompletionsCompat(BaseModel):
@@ -562,23 +665,20 @@ model = pi_ai.get_model("openai", "gpt-4o-mini")
 response = await pi_ai.complete(model, context)
 context.messages.append(response)
 
-# Serialize
+# Serialize to JSON string
 serialized = context.model_dump_json()
-
-# Save to disk, database, etc.
 open("conversation.json", "w").write(serialized)
 
-# Later: restore and continue
+# Restore and continue with any model
 data = json.loads(open("conversation.json").read())
 restored = pi_ai.Context.model_validate(data)
-restored.messages.append(pi_ai.UserMessage(content="Tell me more about its type system"))
+restored.messages.append(pi_ai.UserMessage(content="Tell me more"))
 
-# Continue with any model
 new_model = pi_ai.get_model("anthropic", "claude-haiku-4-5")
 continuation = await pi_ai.complete(new_model, restored)
 ```
 
-> **Note:** If the context contains images (base64-encoded `ImageContent` blocks), they are included in the serialized output.
+Cross-provider handoffs work automatically — thinking blocks from a different model are converted to plain text, tool call IDs are normalized to meet each provider's format requirements, and images are replaced with placeholder text when sent to non-vision models.
 
 ## Environment Variables
 
@@ -603,19 +703,16 @@ Set these to avoid passing `api_key` explicitly in every call:
 model = pi_ai.get_model("openai", "gpt-4o-mini")
 response = await pi_ai.complete(model, context)
 
-# Or override with an explicit key
+# Override with an explicit key
 response = await pi_ai.complete(model, context, pi_ai.StreamOptions(api_key="sk-other-key"))
 
-# Check if a key is configured
-from pi_ai.env_keys import get_env_api_key
-key = get_env_api_key("openai")  # returns None if not set
+# Check whether a key is configured
+key = pi_ai.get_env_api_key("openai")  # returns None if not set
 ```
 
 When `ANTHROPIC_OAUTH_TOKEN` is set, the Anthropic provider uses `Authorization: Bearer` instead of `x-api-key`.
 
 ## Synchronous Usage
-
-Use `complete_sync()` from non-async code:
 
 ```python
 import pi_ai
@@ -623,9 +720,15 @@ import pi_ai
 model = pi_ai.get_model("anthropic", "claude-haiku-4-5")
 context = pi_ai.Context(messages=[pi_ai.UserMessage(content="Hello!")])
 
-# Creates a temporary event loop — do not call from inside an existing one
+# Text — creates a temporary event loop; do not call inside an existing one
 response = pi_ai.complete_sync(model, context)
 print(response.content[0].text)
+
+# Image generation
+image_model = pi_ai.get_image_model("openrouter", "google/gemini-2.5-flash-image")
+result = pi_ai.generate_images_sync(image_model, pi_ai.ImagesContext(
+    input=[pi_ai.TextContent(text="A blue triangle")]
+))
 ```
 
 For streaming from synchronous code, wrap in `asyncio.run()`:
