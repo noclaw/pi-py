@@ -319,14 +319,25 @@ def get_default_model(
 
 # ── Auth provider factory ──────────────────────────────────────────────────────
 
+def _models_json_api_key(provider: str, settings_dir: str | Path | None = None) -> str | None:
+    """Return the raw apiKey for *provider* from models.json, or None."""
+    data = _read_json(_settings_dir(settings_dir) / "models.json")
+    provider_data = (data.get("providers") or {}).get(provider) or {}
+    return provider_data.get("apiKey") or None
+
+
 def make_auth_provider(
     settings_dir: str | Path | None = None,
 ) -> Any:
     """Return a ``get_api_key_and_headers`` callable for use with AgentHarness.
 
-    The callable accepts a ``Model`` and returns ``{"apiKey": ..., "headers": ...}``
-    sourced from auth.json.  Returns ``None`` when no credentials exist for the
-    model's provider, allowing pi_ai to fall back to environment variables.
+    The callable accepts a ``Model`` and returns ``{"apiKey": ..., "headers": ...}``.
+
+    Resolution order:
+
+    1. ``auth.json`` entry for the provider (OAuth tokens, explicitly managed keys).
+    2. ``apiKey`` from the provider's ``models.json`` entry (custom local providers).
+    3. ``None`` — lets pi_ai fall back to environment variables.
 
     Usage::
 
@@ -336,6 +347,16 @@ def make_auth_provider(
         )
     """
     def _get_auth(model: Model) -> dict[str, Any] | None:
-        return load_auth(model.provider, settings_dir)
+        # auth.json takes precedence
+        auth = load_auth(model.provider, settings_dir)
+        if auth:
+            return auth
+        # Fall back to the apiKey embedded in models.json for custom providers.
+        # This covers local/private servers where the key lives in models.json
+        # rather than auth.json.
+        key = _models_json_api_key(model.provider, settings_dir)
+        if key:
+            return {"apiKey": key}
+        return None
 
     return _get_auth
