@@ -41,6 +41,119 @@ See [`packages/agent/README.md`](packages/agent/README.md) for the full API and
 
 ---
 
+## CLI (`pi-py`)
+
+`pi-agent` ships a command-line tool named **`pi-py`** (distinct from the
+TypeScript `pi` CLI).
+
+### Setup
+
+The entry point lives in the workspace's `.venv`.  Add an alias so it works from
+any directory:
+
+```bash
+echo 'alias pi-py="uv run --project /path/to/pi-py pi-py"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Or use `uv run pi-py ...` directly from within the repo.
+
+### Commands
+
+```
+pi-py prompt TEXT [OPTIONS]    Run a prompt and stream the response
+pi-py sessions list            List saved sessions, newest first
+pi-py sessions show ID         Print the transcript for a session
+pi-py models list              List built-in and custom models
+```
+
+Global option: `--settings-dir PATH` (default: `~/.pi/agent`).
+
+### `prompt`
+
+```bash
+# Uses model from ~/.pi/agent/settings.json
+pi-py prompt "What files are in this directory?"
+
+# Explicit model
+pi-py prompt -m anthropic:claude-haiku-4-5 "Explain this codebase"
+
+# No tools — pure LLM call
+pi-py prompt --no-tools "What is the capital of France?"
+
+# Save session to disk
+pi-py prompt --sessions-dir ~/.pi/sessions "Start a task"
+
+# Resume a saved session
+pi-py prompt --sessions-dir ~/.pi/sessions --session abc12345 "Continue"
+
+# Structured JSON output (one AgentEvent per line, for subprocess use)
+pi-py prompt --json "Write hello.py" | python3 -m json.tool
+```
+
+| Flag | Description |
+|---|---|
+| `-m`, `--model PROVIDER:ID` | Model override, e.g. `anthropic:claude-sonnet-4-6` |
+| `-s`, `--session ID` | Resume existing session by ID |
+| `--sessions-dir PATH` | Session storage root (default: `~/.pi/sessions`) |
+| `--system TEXT` | Replace the auto-generated system prompt |
+| `--cwd PATH` | Working directory for file/shell tools (default: current dir) |
+| `--no-tools` | Disable built-in file and shell tools |
+| `--json` | Emit newline-delimited JSON events instead of streaming text |
+
+**Text output** streams the assistant response with cyan annotations for tool
+calls and a cost/token summary line at the end:
+
+```
+  ⚙ $ python hello.py
+    hello world
+The script ran successfully and printed "hello world".
+
+[claude-haiku-4-5 · 245 in / 38 out · $0.000042]
+```
+
+**JSON output** (`--json`) emits one `AgentEvent` object per line, ending with
+`{"type":"agent_end","messages":[...]}`.  This is a direct replacement for
+`claude --output-format stream-json` in subprocess-based integrations.
+
+### `sessions`
+
+```bash
+pi-py sessions list
+# ID        CREATED               CWD
+# ──────────────────────────────────────────────────────────────────────
+# abc12345  2025-05-19 10:30      ~/code/my-project
+# def67890  2025-05-18 09:15      ~/code/other-project
+
+pi-py sessions show abc12345
+# Session: abc12345abc12345
+# Created: 2025-05-19 10:30 PDT
+# CWD:     /Users/jeff/code/my-project
+#
+# user: What does this codebase do?
+# assistant: This is a FastAPI service that ...
+#   [called: read, bash]
+```
+
+### `models`
+
+```bash
+pi-py models list
+# Built-in models:
+#   PROVIDER      MODEL ID                           CTX  REASONING
+#   ──────────────────────────────────────────────────────────────────
+#   anthropic     claude-sonnet-4-6                   1M  ✓
+#   openai        gpt-4o                            128K
+#   ...
+#
+# Custom models (models.json):
+#   omlx          Qwen3.6-27B-bf16                  32K   [default]
+#
+# Default: omlx:Qwen3.6-27B-bf16
+```
+
+---
+
 ## Settings files
 
 `pi-agent` reads three optional JSON files from `~/.pi/agent/` (or a custom
