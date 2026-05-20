@@ -73,6 +73,8 @@ uv sync --all-packages      # install deps
 uv run python test_live.py  # live tests (needs API keys)
 ```
 
+**Docs:** `docs/providers.md` (auth, settings.json), `docs/models.md` (models.json format), `docs/image_models.md` (image generation)
+
 ---
 
 ## packages/agent — COMPLETE
@@ -91,7 +93,7 @@ Stateful agentic loop built on top of `packages/ai`, plus built-in coding tools,
 - `AgentHarness(env, session, model, tools?, auto_compact?, ...)` — high-level orchestration: session + compaction + hooks + `prompt()`, `compact()`, `navigate_tree()`
 
 *One-call factory:*
-- `create_agent(model?, cwd?, session_dir?, settings_dir?, tools?, context_files?, ...)` → `AgentHarness` — wires env, session, tools, context loading, settings, and auth in one call; `model=None` resolves from `~/.pi-py/settings.json`
+- `create_agent(model?, cwd?, sessions_dir?, session_id?, settings_dir?, tools?, context_files?, ...)` → `AgentHarness` — wires env, session, tools, context loading, settings, and auth in one call; `model=None` resolves from `~/.pi-py/settings.json`; `session_id` resumes an existing JSONL session
 
 *Built-in tools:*
 - `create_tools(env, cwd?)` → `list[AgentTool]` — all 7 tools
@@ -166,6 +168,7 @@ packages/agent/
     ├── agent_loop.py        # agent_loop(), run_agent_loop(), AgentEventStream, tool execution
     ├── agent.py             # Agent class
     ├── create_agent.py      # create_agent() one-call factory
+    ├── cli.py               # pi-py CLI: prompt, sessions list/show, models list (with auth status)
     ├── settings.py          # load_settings(), load_custom_models(), load_auth(), get_default_model()
     ├── tools/
     │   ├── __init__.py      # create_tools(), load_context_files(), build_system_prompt()
