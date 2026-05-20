@@ -3,18 +3,17 @@ from __future__ import annotations
 import os
 
 _PROVIDER_ENV_KEYS: dict[str, list[str]] = {
-    "openai": ["OPENAI_API_KEY"],
+    # ── Mainstream cloud providers ─────────────────────────────────────────────
+    "openai":    ["OPENAI_API_KEY"],
     "anthropic": ["ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
-    "deepseek": ["DEEPSEEK_API_KEY"],
-    "groq": ["GROQ_API_KEY"],
-    "cerebras": ["CEREBRAS_API_KEY"],
-    "xai": ["XAI_API_KEY"],
-    "openrouter": ["OPENROUTER_API_KEY"],
-    "mistral": ["MISTRAL_API_KEY"],
-    "together": ["TOGETHER_API_KEY"],
-    "fireworks": ["FIREWORKS_API_KEY"],
-    "huggingface": ["HUGGINGFACE_API_KEY", "HF_TOKEN"],
-    "github-copilot": ["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"],
+    "google":    ["GEMINI_API_KEY"],          # Gemini via OpenAI-compat endpoint
+    "deepseek":  ["DEEPSEEK_API_KEY"],
+    "groq":      ["GROQ_API_KEY"],
+    "cerebras":  ["CEREBRAS_API_KEY"],
+    "mistral":   ["MISTRAL_API_KEY"],
+    "xai":       ["XAI_API_KEY"],             # Grok
+    "openrouter": ["OPENROUTER_API_KEY"],     # meta-provider
+    # ── Add other providers via ~/.pi-py/models.json (no code change needed) ──
 }
 
 

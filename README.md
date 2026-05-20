@@ -36,8 +36,9 @@ async def main():
 asyncio.run(main())
 ```
 
-See [`packages/agent/README.md`](packages/agent/README.md) for the full API and
-[`packages/ai/README.md`](packages/ai/README.md) for the low-level LLM interface.
+See [`packages/agent/README.md`](packages/agent/README.md) for the full API,
+[`packages/ai/README.md`](packages/ai/README.md) for the low-level LLM interface,
+and [`docs/`](docs/) for provider and custom-model configuration guides.
 
 ---
 
