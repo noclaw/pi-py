@@ -1,9 +1,128 @@
 from __future__ import annotations
 
+import importlib.resources
+import json
+from pathlib import Path
 from typing import Optional
 
-from .models_catalog import MODELS
-from .types import AssistantMessage, Model, ModelThinkingLevel, Usage, THINKING_LEVELS
+from .types import (
+    AnthropicMessagesCompat,
+    AssistantMessage,
+    Model,
+    ModelCost,
+    ModelThinkingLevel,
+    OpenAICompletionsCompat,
+    Usage,
+    THINKING_LEVELS,
+)
+
+# ── JSON catalog loader ────────────────────────────────────────────────────────
+
+def _compat_from_dict(api: str, data: dict) -> OpenAICompletionsCompat | AnthropicMessagesCompat | None:
+    if not data:
+        return None
+    if api == "openai-completions":
+        return OpenAICompletionsCompat(
+            supports_store=data.get("supportsStore", False),
+            supports_developer_role=data.get("supportsDeveloperRole", False),
+            supports_reasoning_effort=data.get("supportsReasoningEffort", False),
+            supports_usage_in_streaming=data.get("supportsUsageInStreaming", True),
+            max_tokens_field=data.get("maxTokensField", "max_completion_tokens"),
+            requires_tool_result_name=data.get("requiresToolResultName", False),
+            requires_assistant_after_tool_result=data.get("requiresAssistantAfterToolResult", False),
+            requires_thinking_as_text=data.get("requiresThinkingAsText", False),
+            requires_reasoning_content_on_assistant_messages=data.get(
+                "requiresReasoningContentOnAssistantMessages", False
+            ),
+            thinking_format=data.get("thinkingFormat"),
+            supports_strict_mode=data.get("supportsStrictMode", True),
+        )
+    if api == "anthropic-messages":
+        return AnthropicMessagesCompat(
+            supports_eager_tool_input_streaming=data.get("supportsEagerToolInputStreaming", True),
+            supports_long_cache_retention=data.get("supportsLongCacheRetention", True),
+            send_session_affinity_headers=data.get("sendSessionAffinityHeaders", False),
+            supports_cache_control_on_tools=data.get("supportsCacheControlOnTools", True),
+        )
+    return None
+
+
+def _models_from_json(data: dict) -> dict[str, dict[str, Model]]:
+    """Parse a models.json dict into the {provider: {model_id: Model}} registry."""
+    result: dict[str, dict[str, Model]] = {}
+    for provider_name, pdata in (data.get("providers") or {}).items():
+        api: str = pdata.get("api", "openai-completions")
+        base_url: str = pdata.get("baseUrl", "")
+        api_key: str | None = pdata.get("apiKey") or None
+        auth_header: bool = bool(pdata.get("authHeader", False))
+        provider_compat_data: dict = pdata.get("compat") or {}
+
+        default_headers: dict[str, str] | None = (
+            {"Authorization": f"Bearer {api_key}"} if auth_header and api_key else None
+        )
+
+        result[provider_name] = {}
+        for m in pdata.get("models") or []:
+            if not m.get("id"):
+                continue
+            # Model-level compat overrides provider-level compat
+            compat_data = {**provider_compat_data, **(m.get("compat") or {})}
+            compat = _compat_from_dict(api, compat_data) if compat_data else None
+            cost_raw = m.get("cost") or {}
+            result[provider_name][m["id"]] = Model(
+                id=m["id"],
+                name=m.get("name", m["id"]),
+                api=api,
+                provider=provider_name,
+                base_url=base_url,
+                reasoning=bool(m.get("reasoning", False)),
+                input=m.get("input", ["text"]),
+                cost=ModelCost(
+                    input=float(cost_raw.get("input", 0)),
+                    output=float(cost_raw.get("output", 0)),
+                    cache_read=float(cost_raw.get("cacheRead", 0)),
+                    cache_write=float(cost_raw.get("cacheWrite", 0)),
+                ),
+                context_window=int(m.get("contextWindow", 4096)),
+                max_tokens=int(m.get("maxTokens", 4096)),
+                thinking_level_map=m.get("thinkingLevelMap") or None,
+                headers=m.get("headers") or default_headers,
+                compat=compat,
+                hint=m.get("hint") or None,
+            )
+    return result
+
+
+def _load_catalog() -> dict[str, dict[str, Model]]:
+    """Load model catalog from JSON.
+
+    Always loads the bundled ``pi_ai/models.json`` as the base catalog.
+    If ``~/.pi-py/models.json`` exists, its providers are merged on top:
+    new providers are added; existing providers are replaced wholesale.
+    This lets users add local servers without touching the built-in entries.
+    """
+    catalog: dict[str, dict[str, Model]] = {}
+
+    # Base: bundled catalog
+    try:
+        pkg_file = importlib.resources.files("pi_ai").joinpath("models.json")
+        catalog = _models_from_json(json.loads(pkg_file.read_text(encoding="utf-8")))
+    except Exception:
+        pass
+
+    # Overlay: user additions / overrides from ~/.pi-py/models.json
+    user_path = Path("~/.pi-py/models.json").expanduser()
+    if user_path.is_file():
+        try:
+            user_models = _models_from_json(json.loads(user_path.read_text(encoding="utf-8")))
+            catalog.update(user_models)  # per-provider override
+        except Exception:
+            pass
+
+    return catalog
+
+
+MODELS: dict[str, dict[str, Model]] = _load_catalog()
 
 
 def get_model(provider: str, model_id: str) -> Model:

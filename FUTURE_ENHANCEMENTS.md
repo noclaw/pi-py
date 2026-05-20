@@ -17,7 +17,7 @@ local servers. A higher-level `register_provider()` function that reads a
 remove the need to build `Model` objects manually.
 
 ```python
-pi_agent.register_providers_from_settings()  # reads ~/.pi/agent/models.json
+pi_agent.register_providers_from_settings()  # reads ~/.pi-py/models.json
 model = pi_ai.get_model("my-local", "my-model")  # now available
 ```
 

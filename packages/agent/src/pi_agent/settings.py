@@ -37,8 +37,8 @@ from pi_ai.types import Model, ModelCost, OpenAICompletionsCompat
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
-GLOBAL_SETTINGS_DIR = Path("~/.pi/agent").expanduser()
-PROJECT_SETTINGS_DIRNAME = ".pi"
+GLOBAL_SETTINGS_DIR = Path("~/.pi-py").expanduser()
+PROJECT_SETTINGS_DIRNAME = ".pi-py"
 
 
 # ── Data classes ───────────────────────────────────────────────────────────────
@@ -59,6 +59,7 @@ class _CustomModelDef:
     cost: dict[str, float]
     context_window: int
     max_tokens: int
+    hint: str | None = None
 
 
 @dataclass
@@ -143,6 +144,7 @@ def _parse_provider(name: str, data: dict) -> _CustomProviderDef | None:
             },
             context_window=int(m.get("contextWindow", 4096)),
             max_tokens=int(m.get("maxTokens", 4096)),
+            hint=m.get("hint") or None,
         ))
     return _CustomProviderDef(
         base_url=data.get("baseUrl", ""),
@@ -190,6 +192,7 @@ def _provider_to_models(name: str, provider: _CustomProviderDef) -> list[tuple[s
             max_tokens=m.max_tokens,
             headers=default_headers,
             compat=compat,
+            hint=m.hint,
         )))
     return results
 
@@ -315,6 +318,52 @@ def get_default_model(
         return get_model(provider, model_id)
     except Exception:
         return None
+
+
+# ── Available models ───────────────────────────────────────────────────────────
+
+def _provider_has_auth(provider: str, settings_dir: str | Path | None = None) -> bool:
+    """Return True if *provider* has auth configured (auth.json, env var, or inline key)."""
+    if load_auth(provider, settings_dir):
+        return True
+    from pi_ai.env_keys import get_env_api_key
+    if get_env_api_key(provider):
+        return True
+    if _models_json_api_key(provider, settings_dir):
+        return True
+    return False
+
+
+def get_available_models(
+    settings_dir: str | Path | None = None,
+) -> list[tuple[str, "Model"]]:
+    """Return ``(provider, model)`` pairs for all models that have auth configured.
+
+    Includes both built-in catalog models and custom models from models.json.
+    A model is considered available when its provider has a key in auth.json,
+    a known environment variable (e.g. ANTHROPIC_API_KEY), or an inline
+    ``apiKey`` in models.json.
+    """
+    from pi_ai import get_providers, get_models
+
+    results: list[tuple[str, Model]] = []
+
+    # Custom models (models.json) — checked first so they can shadow built-ins
+    seen: set[tuple[str, str]] = set()
+    for pname, model in load_custom_models(settings_dir):
+        if _provider_has_auth(pname, settings_dir):
+            results.append((pname, model))
+            seen.add((pname, model.id))
+
+    # Built-in catalog
+    for provider in get_providers():
+        if not _provider_has_auth(provider, settings_dir):
+            continue
+        for model in get_models(provider):
+            if (provider, model.id) not in seen:
+                results.append((provider, model))
+
+    return results
 
 
 # ── Auth provider factory ──────────────────────────────────────────────────────

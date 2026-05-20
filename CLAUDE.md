@@ -51,8 +51,8 @@ packages/ai/
     ├── registry.py          # Text provider registry
     ├── images_registry.py   # Image provider registry
     ├── env_keys.py          # get_env_api_key()
-    ├── models.py            # get_model/get_models/get_providers + utilities
-    ├── models_catalog.py    # Curated text model definitions
+    ├── models.py            # get_model/get_models/get_providers + JSON loader
+    ├── models.json          # Bundled model catalog (loaded at import; merged with ~/.pi-py/models.json)
     ├── image_models.py      # get_image_model/get_image_models/get_image_providers
     ├── image_models_catalog.py  # Curated image model definitions
     ├── validation.py        # validate_tool_call, string_enum
@@ -91,7 +91,7 @@ Stateful agentic loop built on top of `packages/ai`, plus built-in coding tools,
 - `AgentHarness(env, session, model, tools?, auto_compact?, ...)` — high-level orchestration: session + compaction + hooks + `prompt()`, `compact()`, `navigate_tree()`
 
 *One-call factory:*
-- `create_agent(model?, cwd?, session_dir?, settings_dir?, tools?, context_files?, ...)` → `AgentHarness` — wires env, session, tools, context loading, settings, and auth in one call; `model=None` resolves from `~/.pi/agent/settings.json`
+- `create_agent(model?, cwd?, session_dir?, settings_dir?, tools?, context_files?, ...)` → `AgentHarness` — wires env, session, tools, context loading, settings, and auth in one call; `model=None` resolves from `~/.pi-py/settings.json`
 
 *Built-in tools:*
 - `create_tools(env, cwd?)` → `list[AgentTool]` — all 7 tools
@@ -100,7 +100,7 @@ Stateful agentic loop built on top of `packages/ai`, plus built-in coding tools,
 - `build_system_prompt(tools?, context?)` — assembles system prompt with tool list + guidelines
 
 *Settings:*
-- `load_settings(cwd?, settings_dir?)` → `Settings` — merges `~/.pi/agent/settings.json` with project `.pi/settings.json`
+- `load_settings(cwd?, settings_dir?)` → `Settings` — merges `~/.pi-py/settings.json` with project `.pi-py/settings.json`
 - `load_custom_models(settings_dir?)` → `list[(provider, Model)]` — custom providers from `models.json`
 - `find_custom_model(provider, model_id, settings_dir?)` → `Model | None`
 - `load_auth(provider, settings_dir?)` → `dict | None` — reads `auth.json`; OAuth tokens get Bearer header
@@ -144,8 +144,8 @@ Stateful agentic loop built on top of `packages/ai`, plus built-in coding tools,
 | `find` | `pattern, path?, limit?` | Tries `fd`/`fdfind`, falls back to `pathlib.rglob` |
 | `ls` | `path?, limit?` | Dirs first (trailing `/`), symlinks marked `@`, sorted |
 
-**Settings files (`~/.pi/agent/`):**
-- `settings.json` — `defaultProvider`, `defaultModel`; project `.pi/settings.json` overrides (walked up from `cwd`)
+**Settings files (`~/.pi-py/`):**
+- `settings.json` — `defaultProvider`, `defaultModel`; project `.pi-py/settings.json` overrides (walked up from `cwd`)
 - `models.json` — custom providers + models; `authHeader: true` → API key stored as `Authorization: Bearer` in `model.headers`
 - `auth.json` — per-provider credentials; `type: "oauth"` → access token + `Authorization: Bearer` header + expiry warning
 

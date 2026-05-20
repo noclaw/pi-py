@@ -28,7 +28,7 @@ uv add pi-ai pi-agent
 import asyncio, pi_agent
 
 async def main():
-    # Resolves model from ~/.pi/agent/settings.json automatically
+    # Resolves model from ~/.pi-py/settings.json automatically
     harness = await pi_agent.create_agent(cwd=".")
     reply = await harness.prompt("What files are in this directory?")
     print(reply.content[0].text)
@@ -67,12 +67,12 @@ pi-py sessions show ID         Print the transcript for a session
 pi-py models list              List built-in and custom models
 ```
 
-Global option: `--settings-dir PATH` (default: `~/.pi/agent`).
+Global option: `--settings-dir PATH` (default: `~/.pi-py`).
 
 ### `prompt`
 
 ```bash
-# Uses model from ~/.pi/agent/settings.json
+# Uses model from ~/.pi-py/settings.json
 pi-py prompt "What files are in this directory?"
 
 # Explicit model
@@ -82,10 +82,10 @@ pi-py prompt -m anthropic:claude-haiku-4-5 "Explain this codebase"
 pi-py prompt --no-tools "What is the capital of France?"
 
 # Save session to disk
-pi-py prompt --sessions-dir ~/.pi/sessions "Start a task"
+pi-py prompt --sessions-dir ~/.pi-py/sessions "Start a task"
 
 # Resume a saved session
-pi-py prompt --sessions-dir ~/.pi/sessions --session abc12345 "Continue"
+pi-py prompt --sessions-dir ~/.pi-py/sessions --session abc12345 "Continue"
 
 # Structured JSON output (one AgentEvent per line, for subprocess use)
 pi-py prompt --json "Write hello.py" | python3 -m json.tool
@@ -95,7 +95,7 @@ pi-py prompt --json "Write hello.py" | python3 -m json.tool
 |---|---|
 | `-m`, `--model PROVIDER:ID` | Model override, e.g. `anthropic:claude-sonnet-4-6` |
 | `-s`, `--session ID` | Resume existing session by ID |
-| `--sessions-dir PATH` | Session storage root (default: `~/.pi/sessions`) |
+| `--sessions-dir PATH` | Session storage root (default: `~/.pi-py/sessions`) |
 | `--system TEXT` | Replace the auto-generated system prompt |
 | `--cwd PATH` | Working directory for file/shell tools (default: current dir) |
 | `--no-tools` | Disable built-in file and shell tools |
@@ -189,10 +189,10 @@ curl -X POST http://localhost:8080/run \
 
 ## Settings files
 
-`pi-agent` reads three optional JSON files from `~/.pi/agent/` (or a custom
+`pi-agent` reads three optional JSON files from `~/.pi-py/` (or a custom
 directory passed as `settings_dir`).
 
-### `~/.pi/agent/settings.json`
+### `~/.pi-py/settings.json`
 
 Global defaults. A project-level `.pi/settings.json` anywhere on the path from
 the working directory up to the filesystem root overrides these values.
@@ -209,7 +209,7 @@ the working directory up to the filesystem root overrides these values.
 | `defaultProvider` | string | Provider name used when `model=None` in `create_agent()` |
 | `defaultModel` | string | Model ID within that provider |
 
-### `~/.pi/agent/models.json`
+### `~/.pi-py/models.json`
 
 Custom providers and models not in the built-in catalog (local servers, private
 endpoints, custom OpenAI-compatible APIs).
@@ -250,7 +250,7 @@ endpoints, custom OpenAI-compatible APIs).
 Loaded models are returned by `pi_agent.load_custom_models()` and automatically
 used by `pi_agent.get_default_model()` and `pi_agent.create_agent()`.
 
-### `~/.pi/agent/auth.json`
+### `~/.pi-py/auth.json`
 
 Per-provider authentication credentials. Supports plain API keys and OAuth tokens.
 
@@ -314,7 +314,7 @@ export OPENROUTER_API_KEY=sk-or-...
 uv run python test_live.py
 ```
 
-Keys already in `~/.pi/agent/auth.json` are picked up automatically by the
+Keys already in `~/.pi-py/auth.json` are picked up automatically by the
 `create_agent` test; other tests rely on environment variables.
 
 ### What gets tested
