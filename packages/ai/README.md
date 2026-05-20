@@ -688,15 +688,13 @@ Set these to avoid passing `api_key` explicitly in every call:
 |---|---|
 | OpenAI | `OPENAI_API_KEY` |
 | Anthropic | `ANTHROPIC_API_KEY` or `ANTHROPIC_OAUTH_TOKEN` |
+| Google (Gemini) | `GEMINI_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 | Groq | `GROQ_API_KEY` |
 | Cerebras | `CEREBRAS_API_KEY` |
+| Mistral | `MISTRAL_API_KEY` |
 | xAI | `XAI_API_KEY` |
 | OpenRouter | `OPENROUTER_API_KEY` |
-| Together AI | `TOGETHER_API_KEY` |
-| Fireworks | `FIREWORKS_API_KEY` |
-| Hugging Face | `HUGGINGFACE_API_KEY` or `HF_TOKEN` |
-| GitHub Copilot | `COPILOT_GITHUB_TOKEN` or `GITHUB_TOKEN` |
 
 ```python
 # Uses OPENAI_API_KEY from environment automatically

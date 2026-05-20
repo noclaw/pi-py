@@ -1,6 +1,33 @@
 # Providers
 
-pi-py resolves API credentials in this order for each provider:
+## Default provider and model
+
+Set the provider and model used when `model=None` in `create_agent()` or `pi-py prompt`:
+
+**`~/.pi-py/settings.json`**
+```json
+{
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-4-6"
+}
+```
+
+A project-level `.pi-py/settings.json` anywhere on the path from the working
+directory up to the filesystem root overrides the global file — useful for
+per-project model selection.
+
+```python
+import pi_agent
+
+model = pi_agent.get_default_model()          # resolves from settings
+harness = await pi_agent.create_agent()        # model=None uses the default
+```
+
+---
+
+## Credential resolution order
+
+For each provider, pi-py checks in this order:
 
 1. `get_api_key_and_headers` callable passed to `AgentHarness` or `create_agent()`
 2. `~/.pi-py/auth.json` (see below)
