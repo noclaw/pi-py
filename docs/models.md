@@ -277,3 +277,9 @@ All built-in Anthropic models remain available; only the endpoint and auth chang
 Note: pi-py does not currently have native support for the OpenAI Responses API
 or the Google Generative AI API. Gemini models work via Google's
 OpenAI-compatible endpoint — see [providers.md](providers.md).
+
+---
+
+## Image generation models
+
+Image generation uses a separate model type and API. See [image_models.md](image_models.md).
