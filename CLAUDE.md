@@ -53,8 +53,8 @@ packages/ai/
     ├── env_keys.py          # get_env_api_key()
     ├── models.py            # get_model/get_models/get_providers + JSON loader
     ├── models.json          # Bundled model catalog (loaded at import; merged with ~/.pi-py/models.json)
-    ├── image_models.py      # get_image_model/get_image_models/get_image_providers
-    ├── image_models_catalog.py  # Curated image model definitions
+    ├── image_models.py      # get_image_model/get_image_models/get_image_providers + JSON loader
+    ├── image_models.json    # Bundled image model catalog (merged with ~/.pi-py/image_models.json)
     ├── validation.py        # validate_tool_call, string_enum
     └── providers/
         ├── __init__.py      # Registers text providers

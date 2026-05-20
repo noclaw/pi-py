@@ -1,0 +1,59 @@
+{
+  "providers": {
+    "openrouter": {
+      "api": "openrouter-images",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "models": [
+        {
+          "id": "black-forest-labs/flux.2-flex",
+          "name": "FLUX.2 Flex",
+          "input": ["text", "image"],
+          "output": ["image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        },
+        {
+          "id": "black-forest-labs/flux.2-pro",
+          "name": "FLUX.2 Pro",
+          "input": ["text", "image"],
+          "output": ["image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        },
+        {
+          "id": "google/gemini-2.5-flash-image",
+          "name": "Gemini 2.5 Flash Image",
+          "input": ["text", "image"],
+          "output": ["image", "text"],
+          "cost": { "input": 0.3, "output": 2.5, "cacheRead": 0.03, "cacheWrite": 0.0833 }
+        },
+        {
+          "id": "google/gemini-3-pro-image-preview",
+          "name": "Gemini 3 Pro Image Preview",
+          "input": ["text", "image"],
+          "output": ["image", "text"],
+          "cost": { "input": 2, "output": 12, "cacheRead": 0.2, "cacheWrite": 0.375 }
+        },
+        {
+          "id": "google/gemini-3.1-flash-image-preview",
+          "name": "Gemini 3.1 Flash Image Preview",
+          "input": ["text", "image"],
+          "output": ["image", "text"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        },
+        {
+          "id": "openai/gpt-image-1",
+          "name": "GPT Image 1 (via OpenRouter)",
+          "input": ["text", "image"],
+          "output": ["image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        },
+        {
+          "id": "recraft-ai/recraft-v3",
+          "name": "Recraft V3",
+          "input": ["text"],
+          "output": ["image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}
