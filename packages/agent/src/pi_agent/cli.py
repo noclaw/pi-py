@@ -473,6 +473,35 @@ def models_list(ctx: click.Context) -> None:
     _print_models(settings_dir)
 
 
+def _check_provider_auth(provider: str, settings_dir: str | None, models: list) -> bool:
+    """Return True when credentials are available for *provider*.
+
+    Checks in order:
+    1. auth.json entry (OAuth or api_key)
+    2. Environment variable via pi_ai.get_env_api_key()
+    3. apiKey embedded in models.json for this provider (authHeader pattern)
+    4. Authorization header baked into any model's headers
+    """
+    import pi_ai
+    import pi_agent
+    from pi_agent.settings import _models_json_api_key
+
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        if pi_agent.load_auth(provider, settings_dir):
+            return True
+    if pi_ai.get_env_api_key(provider):
+        return True
+    if _models_json_api_key(provider, settings_dir):
+        return True
+    for model in models:
+        headers = getattr(model, "headers", None) or {}
+        if any(k.lower() == "authorization" for k in headers):
+            return True
+    return False
+
+
 def _print_models(settings_dir: str | None) -> None:
     import pi_ai
     import pi_agent
@@ -485,6 +514,25 @@ def _print_models(settings_dir: str | None) -> None:
         for p, m in pi_agent.load_custom_models(settings_dir)
     }
 
+    # Pre-compute auth status per provider (includes custom providers)
+    all_providers = list(pi_ai.get_providers())
+    custom_providers = [p for p, _ in pi_agent.load_custom_models(settings_dir)]
+    for p in custom_providers:
+        if p not in all_providers:
+            all_providers.append(p)
+
+    auth_status: dict[str, bool] = {
+        p: _check_provider_auth(p, settings_dir, pi_ai.get_models(p))
+        for p in all_providers
+    }
+    # Custom providers may not be in pi_ai.get_models() yet — check separately
+    for pname, model in pi_agent.load_custom_models(settings_dir):
+        if pname not in auth_status:
+            auth_status[pname] = _check_provider_auth(pname, settings_dir, [model])
+        elif not auth_status[pname]:
+            # Re-check including the custom model's embedded headers
+            auth_status[pname] = _check_provider_auth(pname, settings_dir, [model])
+
     def _ctx(n: int) -> str:
         if n <= 0:
             return "?"
@@ -492,21 +540,29 @@ def _print_models(settings_dir: str | None) -> None:
             return f"{n // 1_000_000}M"
         return f"{n // 1000}K"
 
-    def _row(provider: str, model_id: str, name: str, ctx_win: int,
+    def _auth_mark(provider: str) -> str:
+        return (
+            click.style("✓", fg="green")
+            if auth_status.get(provider)
+            else click.style("·", fg="bright_black")
+        )
+
+    def _row(provider: str, model_id: str, ctx_win: int,
              reasoning: bool, tags: list[str]) -> None:
         tag_str = "  " + " ".join(click.style(f"[{t}]", fg="yellow") for t in tags) if tags else ""
         r = click.style("✓", fg="magenta") if reasoning else " "
+        mark = _auth_mark(provider)
         click.echo(
-            f"  {provider:<12}  {model_id:<38}  {_ctx(ctx_win):>5}  {r}{tag_str}"
+            f"  {mark} {provider:<12}  {model_id:<38}  {_ctx(ctx_win):>5}  {r}{tag_str}"
         )
 
     # Built-in models
     click.echo(click.style("\nBuilt-in models:", bold=True))
     click.echo(click.style(
-        f"  {'PROVIDER':<12}  {'MODEL ID':<38}  {'CTX':>5}  REASONING",
+        f"  K {'PROVIDER':<12}  {'MODEL ID':<38}  {'CTX':>5}  REASONING",
         fg="bright_black",
     ))
-    click.echo("  " + "─" * 66)
+    click.echo("  " + "─" * 68)
 
     for provider in pi_ai.get_providers():
         for model in pi_ai.get_models(provider):
@@ -516,7 +572,7 @@ def _print_models(settings_dir: str | None) -> None:
                 tags.append("default")
             if key in custom_models:
                 tags.append("overridden")
-            _row(provider, model.id, model.name, model.context_window, model.reasoning, tags)
+            _row(provider, model.id, model.context_window, model.reasoning, tags)
 
     # Custom models not already in built-in catalog
     built_in_keys = {
@@ -533,14 +589,14 @@ def _print_models(settings_dir: str | None) -> None:
     if extra_pairs:
         click.echo(click.style("\nCustom models (models.json):", bold=True))
         click.echo(click.style(
-            f"  {'PROVIDER':<12}  {'MODEL ID':<38}  {'CTX':>5}  REASONING",
+            f"  K {'PROVIDER':<12}  {'MODEL ID':<38}  {'CTX':>5}  REASONING",
             fg="bright_black",
         ))
-        click.echo("  " + "─" * 66)
+        click.echo("  " + "─" * 68)
         for pname, model in extra_pairs:
             key = (pname, model.id)
             tags = ["default"] if key == default_key else []
-            _row(pname, model.id, model.name, model.context_window, model.reasoning, tags)
+            _row(pname, model.id, model.context_window, model.reasoning, tags)
 
     click.echo()
     if default_model:
@@ -548,6 +604,10 @@ def _print_models(settings_dir: str | None) -> None:
     else:
         click.echo(click.style(
             "No default configured. Set defaultProvider + defaultModel in "
-            "~/.pi/agent/settings.json or pass --model.",
+            "~/.pi-py/settings.json or pass --model.",
             fg="yellow",
         ))
+    click.echo(click.style(
+        "K column: ✓ = key found (env var / auth.json / models.json)  · = no key",
+        fg="bright_black",
+    ))
