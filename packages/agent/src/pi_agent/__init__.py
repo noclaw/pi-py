@@ -3,6 +3,7 @@ from .create_agent import create_agent
 from .settings import (
     Settings,
     find_custom_model,
+    get_available_models,
     get_default_model,
     load_auth,
     load_custom_models,
@@ -101,6 +102,7 @@ __all__ = [
     # Settings
     "Settings",
     "find_custom_model",
+    "get_available_models",
     "get_default_model",
     "load_auth",
     "load_custom_models",

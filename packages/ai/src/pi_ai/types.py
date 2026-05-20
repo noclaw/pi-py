@@ -163,6 +163,7 @@ class Model(BaseModel):
     max_tokens: int
     headers: Optional[dict[str, str]] = None
     compat: Optional[Union[OpenAICompletionsCompat, AnthropicMessagesCompat]] = None
+    hint: Optional[str] = None  # short alias, e.g. "sonnet", "haiku", "opus"
 
 
 # ── Image generation types ────────────────────────────────────────────────────
