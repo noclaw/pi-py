@@ -68,3 +68,38 @@ def test_long_arg_is_truncated():
     s = _render([{"type": "tool_execution_start", "toolName": "bash", "args": {"command": long_cmd}}])
     assert "…" in s
     assert long_cmd not in s
+
+
+def test_tool_result_preview_rendered():
+    s = _render(
+        [{"type": "tool_execution_end", "toolName": "bash", "isError": False,
+          "result": {"output": "line1\nline2"}}]
+    )
+    assert "│ line1" in s
+    assert "│ line2" in s
+
+
+def test_tool_result_preview_truncates_many_lines():
+    body = "\n".join(f"l{i}" for i in range(20))
+    s = _render([{"type": "tool_execution_end", "toolName": "bash", "result": {"output": body}}])
+    assert "more lines)" in s
+    assert "l0" in s and "l19" not in s
+
+
+def test_tool_result_preview_from_content_blocks():
+    s = _render(
+        [{"type": "tool_execution_end", "toolName": "read",
+          "result": {"content": [{"type": "text", "text": "hello from blocks"}]}}]
+    )
+    assert "│ hello from blocks" in s
+
+
+def test_queue_update_rendered():
+    s = _render([{"type": "queue_update", "steering": ["a"], "followUp": ["b", "c"]}])
+    assert "steering=1" in s and "follow-up=2" in s
+
+
+def test_empty_result_shows_only_mark():
+    s = _render([{"type": "tool_execution_end", "toolName": "bash", "isError": False, "result": None}])
+    assert "✓" in s
+    assert "│" not in s

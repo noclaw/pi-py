@@ -20,6 +20,11 @@ _RED = "\033[31m"
 
 # Keys whose value best summarizes a tool call, in priority order.
 _ARG_KEYS = ("command", "path", "file_path", "pattern", "query", "url")
+# Keys that typically carry a tool's textual result, in priority order.
+_RESULT_KEYS = ("output", "stdout", "content", "text", "result", "message")
+
+_PREVIEW_LINES = 8
+_PREVIEW_WIDTH = 100
 
 
 def _summarize_args(args: Any, limit: int = 80) -> str:
@@ -28,6 +33,28 @@ def _summarize_args(args: Any, limit: int = 80) -> str:
             if key in args and args[key] is not None:
                 value = str(args[key]).replace("\n", " ")
                 return value if len(value) <= limit else value[: limit - 1] + "…"
+    return ""
+
+
+def _result_text(result: Any) -> str:
+    """Best-effort extraction of human-readable text from a tool result."""
+    if result is None:
+        return ""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict):
+        for key in _RESULT_KEYS:
+            value = result.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+            if isinstance(value, list):  # content-block array
+                parts = [
+                    item["text"]
+                    for item in value
+                    if isinstance(item, dict) and isinstance(item.get("text"), str)
+                ]
+                if parts:
+                    return "\n".join(parts)
     return ""
 
 
@@ -57,6 +84,13 @@ class Renderer:
         elif kind == "tool_execution_end":
             mark = self._c(_RED, "✗") if getattr(event, "isError", False) else self._c(_GREEN, "✓")
             self._write(f"  {mark}\n")
+            self._write_result_preview(getattr(event, "result", None))
+        elif kind == "queue_update":
+            steering = len(getattr(event, "steering", None) or [])
+            follow_up = len(getattr(event, "followUp", None) or [])
+            if steering or follow_up:
+                self._break()
+                self._write(self._c(_DIM, f"[queued: steering={steering} follow-up={follow_up}]") + "\n")
         elif kind == "auto_retry_start":
             self._break()
             a, m = getattr(event, "attempt", "?"), getattr(event, "maxAttempts", "?")
@@ -84,6 +118,18 @@ class Renderer:
                 self._write(self._c(_DIM, "(thinking) "))
                 self._mode = "thinking"
             self._write(self._c(_DIM, ame.delta))
+
+    def _write_result_preview(self, result: Any) -> None:
+        text = _result_text(result).strip("\n")
+        if not text:
+            return
+        lines = text.split("\n")
+        for line in lines[:_PREVIEW_LINES]:
+            clipped = line if len(line) <= _PREVIEW_WIDTH else line[: _PREVIEW_WIDTH - 1] + "…"
+            self._write(self._c(_DIM, f"  │ {clipped}") + "\n")
+        if len(lines) > _PREVIEW_LINES:
+            extra = len(lines) - _PREVIEW_LINES
+            self._write(self._c(_DIM, f"  │ … (+{extra} more lines)") + "\n")
 
     def _break(self) -> None:
         if self._mode is not None:
