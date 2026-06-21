@@ -207,3 +207,104 @@ class ExtensionUIRequest(_Wire):
     prefill: str | None = None
     timeout: int | None = None
     notifyType: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Messages (returned by get_messages and embedded in events)
+# ---------------------------------------------------------------------------
+#
+# Field names match pi-ai's types.ts. Content blocks are kept as raw dicts (with
+# extra="allow" on the message) rather than parsed into models, so unknown block types
+# survive; use ``message_text()`` to extract readable text.
+
+
+class TextContent(_Wire):
+    type: str = "text"
+    text: str = ""
+
+
+class ThinkingContent(_Wire):
+    type: str = "thinking"
+    thinking: str = ""
+
+
+class ImageContent(_Wire):
+    type: str = "image"
+    data: str = ""
+    mimeType: str = ""
+
+
+class ToolCall(_Wire):
+    type: str = "toolCall"
+    id: str = ""
+    name: str = ""
+    arguments: dict[str, Any] = {}
+
+
+class UserMessage(_Wire):
+    role: str = "user"
+    content: Any = ""  # str | list[TextContent | ImageContent]
+    timestamp: int | None = None
+
+
+class AssistantMessage(_Wire):
+    role: str = "assistant"
+    content: list[Any] = []  # (TextContent | ThinkingContent | ToolCall)[]
+    provider: str | None = None
+    model: str | None = None
+    usage: dict[str, Any] | None = None
+    stopReason: str | None = None
+    errorMessage: str | None = None
+    timestamp: int | None = None
+
+
+class ToolResultMessage(_Wire):
+    role: str = "toolResult"
+    toolCallId: str = ""
+    toolName: str = ""
+    content: list[Any] = []  # (TextContent | ImageContent)[]
+    isError: bool = False
+    timestamp: int | None = None
+
+
+class BashExecutionMessage(_Wire):
+    role: str = "bashExecution"
+    command: str = ""
+    output: str = ""
+    exitCode: int | None = None
+    cancelled: bool = False
+    truncated: bool = False
+    timestamp: int | None = None
+
+
+_MESSAGE_MODELS: dict[str, type[_Wire]] = {
+    "user": UserMessage,
+    "assistant": AssistantMessage,
+    "toolResult": ToolResultMessage,
+    "bashExecution": BashExecutionMessage,
+}
+
+
+def parse_message(data: dict[str, Any]) -> _Wire:
+    """Parse one message dict into the model matching its ``role`` (raw dict fallback)."""
+    model = _MESSAGE_MODELS.get(data.get("role", ""))
+    return model.model_validate(data) if model else _Wire.model_validate(data)
+
+
+def parse_messages(items: list[Any]) -> list[_Wire]:
+    return [parse_message(item) if isinstance(item, dict) else item for item in items]
+
+
+def _block_text(block: Any) -> str:
+    block = block if isinstance(block, dict) else getattr(block, "__dict__", {})
+    return block["text"] if block.get("type") == "text" and isinstance(block.get("text"), str) else ""
+
+
+def message_text(message: Any) -> str:
+    """Concatenate the text content of a message (handles str or block-list content)."""
+    content = getattr(message, "content", None) if not isinstance(message, dict) else message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(_block_text(block) for block in content)
+    return ""

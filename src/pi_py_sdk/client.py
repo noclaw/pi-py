@@ -23,6 +23,7 @@ from .protocol import (
     ExtensionUIRequest,
     Response,
     parse_event,
+    parse_messages,
 )
 from .transport import Transport
 
@@ -275,7 +276,7 @@ class PiAgent:
 
     async def get_messages(self) -> list[Any]:
         data = self._data(await self._send({"type": "get_messages"}))
-        return data.get("messages", [])
+        return parse_messages(data.get("messages", []))
 
     async def get_commands(self) -> list[dict[str, Any]]:
         data = self._data(await self._send({"type": "get_commands"}))

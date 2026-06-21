@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from .client import PiAgent, UiHandler, UiResult
 from .config import PiConfig
+from .sync import PiAgentSync
 from .errors import (
     PiCommandError,
     PiError,
@@ -19,32 +20,44 @@ from .protocol import (
     DIALOG_METHODS,
     AgentEndEvent,
     AgentStartEvent,
+    AssistantMessage,
     AssistantMessageEvent,
     AutoRetryEndEvent,
     AutoRetryStartEvent,
+    BashExecutionMessage,
     CompactionEndEvent,
     CompactionStartEvent,
     Event,
     ExtensionErrorEvent,
     ExtensionUIRequest,
+    ImageContent,
     MessageEndEvent,
     MessageStartEvent,
     MessageUpdateEvent,
     QueueUpdateEvent,
     Response,
     SessionInfoChangedEvent,
+    TextContent,
+    ThinkingContent,
     ThinkingLevelChangedEvent,
+    ToolCall,
     ToolExecutionEndEvent,
     ToolExecutionStartEvent,
     ToolExecutionUpdateEvent,
+    ToolResultMessage,
     TurnEndEvent,
+    UserMessage,
+    message_text,
     parse_event,
+    parse_message,
+    parse_messages,
 )
 
 __version__ = "0.0.1"
 
 __all__ = [
     "PiAgent",
+    "PiAgentSync",
     "PiConfig",
     "UiHandler",
     "UiResult",
@@ -76,5 +89,16 @@ __all__ = [
     "DIALOG_METHODS",
     "Response",
     "parse_event",
+    "TextContent",
+    "ThinkingContent",
+    "ImageContent",
+    "ToolCall",
+    "UserMessage",
+    "AssistantMessage",
+    "ToolResultMessage",
+    "BashExecutionMessage",
+    "parse_message",
+    "parse_messages",
+    "message_text",
     "__version__",
 ]

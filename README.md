@@ -5,11 +5,11 @@ well-tested TypeScript agent runtime — over Pi's **RPC mode** (`pi --mode rpc`
 JSONL over stdin/stdout), so the agent loop, tool calling, sessions, compaction,
 retries, and provider auth all run inside Pi. No agent logic is reimplemented in Python.
 
-> Status: **Phase 2** — the bridge core (transport, JSONL framing, command/response
-> correlation, prompt streaming) plus the full RPC command surface, the richer event
-> model (queue/compaction/retry/turn/message events), and the interactive
-> **extension-UI sub-protocol** for tool approvals and dialogs. See
-> [`docs/python-sdk-plan.md`](docs/python-sdk-plan.md) for the full design and roadmap.
+> Status: the bridge core (transport, JSONL framing, command/response correlation,
+> prompt streaming), the full RPC command surface, the richer event model, the
+> interactive **extension-UI sub-protocol** (tool approvals/dialogs), typed message-block
+> models, and a synchronous facade (`PiAgentSync`). A terminal coding agent (`pi-py`)
+> ships on top. See [`docs/python-sdk-plan.md`](docs/python-sdk-plan.md) for the design.
 
 ## Install (dev)
 
@@ -46,6 +46,20 @@ asyncio.run(main())
 
 A prompt completes on an `agent_end` event with `willRetry == False` (an `agent_end`
 with `willRetry == True` is followed by an automatic retry).
+
+### Synchronous use
+
+For non-async code, `PiAgentSync` runs the agent on a background loop and blocks:
+
+```python
+from pi_py_sdk import PiAgentSync, message_text
+
+with PiAgentSync(model="anthropic/claude-sonnet-4-20250514") as agent:
+    for event in agent.prompt_stream("hello"):
+        ...
+    for msg in agent.get_messages():        # typed messages
+        print(msg.role, message_text(msg))
+```
 
 ### Tool approvals
 

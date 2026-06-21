@@ -33,6 +33,8 @@ packages = ["src/pi_py_sdk", "src/pi_py_agent"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Integration tests are opt-in: run them with `pytest -m integration`.
+addopts = "-m 'not integration'"
 markers = [
-    "integration: requires a real `pi` binary and a provider API key (deselect with -m 'not integration')",
+    "integration: requires a real `pi` binary (run with -m integration)",
 ]
