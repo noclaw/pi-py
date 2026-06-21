@@ -9,19 +9,42 @@ improves on its ``waitForIdle`` by honoring ``agent_end.willRetry``.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable, Union
 
 from ._discovery import resolve_pi_command
 from .config import PiConfig
 from .errors import PiCommandError, PiNotStartedError, PiProcessError, PiTimeoutError
-from .protocol import AgentEndEvent, Event, Response, parse_event
+from .protocol import (
+    DIALOG_METHODS,
+    AgentEndEvent,
+    Event,
+    ExtensionUIRequest,
+    Response,
+    parse_event,
+)
 from .transport import Transport
 
 EventListener = Callable[[Event], None]
 
+#: A UI handler receives an ExtensionUIRequest and returns the reply value:
+#:   * confirm  -> bool (True/False)
+#:   * select/input/editor -> str (the chosen/entered value)
+#:   * None     -> cancel the dialog
+#: It may be sync or async.
+UiResult = Union[str, bool, None]
+UiHandler = Callable[[ExtensionUIRequest], Union[UiResult, Awaitable[UiResult]]]
+
 _REQUEST_TIMEOUT = 30.0
 _DEFAULT_PROMPT_TIMEOUT = 300.0
+
+
+def _default_ui_handler(request: ExtensionUIRequest) -> UiResult:
+    """Safe default: deny confirmations, cancel other dialogs (never blocks the agent)."""
+    if request.method == "confirm":
+        return False
+    return None
 
 
 class PiAgent:
@@ -47,6 +70,9 @@ class PiAgent:
         )
         self._transport: Transport | None = None
         self._listeners: list[EventListener] = []
+        self._ui_listeners: list[Callable[[ExtensionUIRequest], None]] = []
+        self._ui_handler: UiHandler = _default_ui_handler
+        self._ui_tasks: set[asyncio.Task[None]] = set()
         self._pending: dict[str, asyncio.Future[Response]] = {}
         self._req_seq = 0
 
@@ -67,6 +93,9 @@ class PiAgent:
     async def stop(self) -> None:
         if self._transport is None:
             return
+        for task in list(self._ui_tasks):
+            task.cancel()
+        self._ui_tasks.clear()
         await self._transport.stop()
         self._transport = None
         self._reject_pending(PiProcessError("Client stopped"))
@@ -87,6 +116,36 @@ class PiAgent:
         def unsubscribe() -> None:
             try:
                 self._listeners.remove(listener)
+            except ValueError:
+                pass
+
+        return unsubscribe
+
+    def on_ui_request(self, handler: UiHandler) -> Callable[[], None]:
+        """Install the handler that answers blocking extension dialogs (approvals,
+        selects, inputs, editors). Replaces any previous handler.
+
+        Returns a callable that restores the safe default (deny/cancel) handler.
+        """
+        self._ui_handler = handler
+
+        def reset() -> None:
+            self._ui_handler = _default_ui_handler
+
+        return reset
+
+    def observe_ui_requests(
+        self, listener: Callable[[ExtensionUIRequest], None]
+    ) -> Callable[[], None]:
+        """Observe every UI request (including fire-and-forget notify/setStatus/...).
+
+        Observers do not answer dialogs — that's the :meth:`on_ui_request` handler's job.
+        """
+        self._ui_listeners.append(listener)
+
+        def unsubscribe() -> None:
+            try:
+                self._ui_listeners.remove(listener)
             except ValueError:
                 pass
 
@@ -116,6 +175,111 @@ class PiAgent:
     async def get_last_assistant_text(self) -> str | None:
         data = self._data(await self._send({"type": "get_last_assistant_text"}))
         return data.get("text")
+
+    # Model -----------------------------------------------------------------
+
+    async def set_model(self, provider: str, model_id: str) -> dict[str, Any]:
+        return self._data(
+            await self._send({"type": "set_model", "provider": provider, "modelId": model_id})
+        )
+
+    async def cycle_model(self) -> Any:
+        return (await self._send({"type": "cycle_model"})).data
+
+    async def get_available_models(self) -> list[dict[str, Any]]:
+        data = self._data(await self._send({"type": "get_available_models"}))
+        return data.get("models", [])
+
+    # Thinking --------------------------------------------------------------
+
+    async def set_thinking_level(self, level: str) -> None:
+        await self._send({"type": "set_thinking_level", "level": level})
+
+    async def cycle_thinking_level(self) -> Any:
+        return (await self._send({"type": "cycle_thinking_level"})).data
+
+    # Queue modes -----------------------------------------------------------
+
+    async def set_steering_mode(self, mode: str) -> None:
+        """``mode`` is "all" or "one-at-a-time"."""
+        await self._send({"type": "set_steering_mode", "mode": mode})
+
+    async def set_follow_up_mode(self, mode: str) -> None:
+        """``mode`` is "all" or "one-at-a-time"."""
+        await self._send({"type": "set_follow_up_mode", "mode": mode})
+
+    # Compaction ------------------------------------------------------------
+
+    async def compact(self, custom_instructions: str | None = None) -> dict[str, Any]:
+        return self._data(
+            await self._send({"type": "compact", "customInstructions": custom_instructions})
+        )
+
+    async def set_auto_compaction(self, enabled: bool) -> None:
+        await self._send({"type": "set_auto_compaction", "enabled": enabled})
+
+    # Retry -----------------------------------------------------------------
+
+    async def set_auto_retry(self, enabled: bool) -> None:
+        await self._send({"type": "set_auto_retry", "enabled": enabled})
+
+    async def abort_retry(self) -> None:
+        await self._send({"type": "abort_retry"})
+
+    # Bash ------------------------------------------------------------------
+
+    async def bash(self, command: str, *, exclude_from_context: bool | None = None) -> dict[str, Any]:
+        """Run a shell command. The result is stored as a BashExecutionMessage and only
+        surfaced to the LLM on the *next* prompt (not sent immediately)."""
+        return self._data(
+            await self._send(
+                {"type": "bash", "command": command, "excludeFromContext": exclude_from_context}
+            )
+        )
+
+    async def abort_bash(self) -> None:
+        await self._send({"type": "abort_bash"})
+
+    # Session ---------------------------------------------------------------
+
+    async def new_session(self, parent_session: str | None = None) -> dict[str, Any]:
+        return self._data(
+            await self._send({"type": "new_session", "parentSession": parent_session})
+        )
+
+    async def get_session_stats(self) -> dict[str, Any]:
+        return self._data(await self._send({"type": "get_session_stats"}))
+
+    async def export_html(self, output_path: str | None = None) -> dict[str, Any]:
+        return self._data(await self._send({"type": "export_html", "outputPath": output_path}))
+
+    async def switch_session(self, session_path: str) -> dict[str, Any]:
+        return self._data(
+            await self._send({"type": "switch_session", "sessionPath": session_path})
+        )
+
+    async def fork(self, entry_id: str) -> dict[str, Any]:
+        return self._data(await self._send({"type": "fork", "entryId": entry_id}))
+
+    async def clone(self) -> dict[str, Any]:
+        return self._data(await self._send({"type": "clone"}))
+
+    async def get_fork_messages(self) -> list[dict[str, Any]]:
+        data = self._data(await self._send({"type": "get_fork_messages"}))
+        return data.get("messages", [])
+
+    async def set_session_name(self, name: str) -> None:
+        await self._send({"type": "set_session_name", "name": name})
+
+    # Messages / commands ---------------------------------------------------
+
+    async def get_messages(self) -> list[Any]:
+        data = self._data(await self._send({"type": "get_messages"}))
+        return data.get("messages", [])
+
+    async def get_commands(self) -> list[dict[str, Any]]:
+        data = self._data(await self._send({"type": "get_commands"}))
+        return data.get("commands", [])
 
     # ---------------------------------------------------------------- streaming
 
@@ -223,11 +387,46 @@ class PiAgent:
             # Uncorrelated/late response: drop it.
             return
 
-        # Otherwise an event (the extension_ui_request sub-protocol arrives as an
-        # event here too; a dedicated handler lands in Phase 2).
+        # Extension UI sub-protocol (dialogs / approvals / notifications).
+        if data.get("type") == "extension_ui_request":
+            self._dispatch_ui_request(ExtensionUIRequest.model_validate(data))
+            return
+
+        # Otherwise a session/agent event.
         event = parse_event(data)
         for listener in list(self._listeners):
             listener(event)
+
+    def _dispatch_ui_request(self, request: ExtensionUIRequest) -> None:
+        for listener in list(self._ui_listeners):
+            listener(request)
+        if request.method in DIALOG_METHODS:
+            task = asyncio.create_task(self._answer_ui_request(request))
+            self._ui_tasks.add(task)
+            task.add_done_callback(self._ui_tasks.discard)
+
+    async def _answer_ui_request(self, request: ExtensionUIRequest) -> None:
+        try:
+            result = self._ui_handler(request)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception:
+            result = None  # cancel on handler error rather than hang the agent
+        await self._send_ui_response(request, result)
+
+    async def _send_ui_response(self, request: ExtensionUIRequest, result: UiResult) -> None:
+        if result is None:
+            body: dict[str, Any] = {"type": "extension_ui_response", "id": request.id, "cancelled": True}
+        elif request.method == "confirm":
+            body = {"type": "extension_ui_response", "id": request.id, "confirmed": bool(result)}
+        else:
+            body = {"type": "extension_ui_response", "id": request.id, "value": str(result)}
+        # Not an id-correlated command: write directly, no response is expected.
+        if self._transport is not None:
+            try:
+                await self._transport.write_line(body)
+            except PiProcessError:
+                pass
 
     def _reject_pending(self, error: Exception) -> None:
         for future in self._pending.values():

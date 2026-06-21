@@ -84,11 +84,94 @@ class ToolExecutionEndEvent(Event):
     isError: bool = False
 
 
+class ToolExecutionUpdateEvent(Event):
+    toolCallId: str | None = None
+    toolName: str | None = None
+    args: Any = None
+    partialResult: Any = None
+
+
+class AgentStartEvent(Event):
+    pass
+
+
+class TurnEndEvent(Event):
+    message: Any = None
+    toolResults: list[Any] = []
+
+
+class MessageStartEvent(Event):
+    message: Any = None
+
+
+class MessageEndEvent(Event):
+    message: Any = None
+
+
+class QueueUpdateEvent(Event):
+    """Pending steering / follow-up queues changed."""
+
+    steering: list[str] = []
+    followUp: list[str] = []
+
+
+class CompactionStartEvent(Event):
+    reason: str | None = None  # "manual" | "threshold" | "overflow"
+
+
+class CompactionEndEvent(Event):
+    reason: str | None = None
+    result: Any = None
+    aborted: bool = False
+    willRetry: bool = False
+    errorMessage: str | None = None
+
+
+class AutoRetryStartEvent(Event):
+    attempt: int | None = None
+    maxAttempts: int | None = None
+    delayMs: int | None = None
+    errorMessage: str | None = None
+
+
+class AutoRetryEndEvent(Event):
+    success: bool = False
+    attempt: int | None = None
+    finalError: str | None = None
+
+
+class SessionInfoChangedEvent(Event):
+    name: str | None = None
+
+
+class ThinkingLevelChangedEvent(Event):
+    level: str | None = None
+
+
+class ExtensionErrorEvent(Event):
+    extensionPath: str | None = None
+    event: str | None = None
+    error: Any = None
+
+
 _EVENT_MODELS: dict[str, type[Event]] = {
-    "message_update": MessageUpdateEvent,
+    "agent_start": AgentStartEvent,
     "agent_end": AgentEndEvent,
+    "turn_end": TurnEndEvent,
+    "message_start": MessageStartEvent,
+    "message_update": MessageUpdateEvent,
+    "message_end": MessageEndEvent,
     "tool_execution_start": ToolExecutionStartEvent,
+    "tool_execution_update": ToolExecutionUpdateEvent,
     "tool_execution_end": ToolExecutionEndEvent,
+    "queue_update": QueueUpdateEvent,
+    "compaction_start": CompactionStartEvent,
+    "compaction_end": CompactionEndEvent,
+    "auto_retry_start": AutoRetryStartEvent,
+    "auto_retry_end": AutoRetryEndEvent,
+    "session_info_changed": SessionInfoChangedEvent,
+    "thinking_level_changed": ThinkingLevelChangedEvent,
+    "extension_error": ExtensionErrorEvent,
 }
 
 
@@ -96,3 +179,31 @@ def parse_event(data: dict[str, Any]) -> Event:
     """Parse a decoded stdout object into the most specific Event model available."""
     model = _EVENT_MODELS.get(data.get("type", ""), Event)
     return model.model_validate(data)
+
+
+# ---------------------------------------------------------------------------
+# Extension UI sub-protocol (interactive dialogs / approvals)
+# ---------------------------------------------------------------------------
+
+#: Methods that block the agent until the client sends an extension_ui_response.
+DIALOG_METHODS = frozenset({"select", "confirm", "input", "editor"})
+
+
+class ExtensionUIRequest(_Wire):
+    """A request emitted when an extension needs user interaction.
+
+    ``method`` discriminates. Dialog methods (see ``DIALOG_METHODS``) expect a reply
+    via ``extension_ui_response``; the rest (notify/setStatus/setWidget/setTitle/
+    set_editor_text) are fire-and-forget.
+    """
+
+    type: str = "extension_ui_request"
+    id: str
+    method: str
+    title: str | None = None
+    message: str | None = None
+    options: list[str] | None = None
+    placeholder: str | None = None
+    prefill: str | None = None
+    timeout: int | None = None
+    notifyType: str | None = None

@@ -5,9 +5,11 @@ well-tested TypeScript agent runtime — over Pi's **RPC mode** (`pi --mode rpc`
 JSONL over stdin/stdout), so the agent loop, tool calling, sessions, compaction,
 retries, and provider auth all run inside Pi. No agent logic is reimplemented in Python.
 
-> Status: **Phase 0** — the bridge core (transport, JSONL framing, command/response
-> correlation, prompt streaming). See [`docs/python-sdk-plan.md`](docs/python-sdk-plan.md)
-> for the full design and roadmap.
+> Status: **Phase 2** — the bridge core (transport, JSONL framing, command/response
+> correlation, prompt streaming) plus the full RPC command surface, the richer event
+> model (queue/compaction/retry/turn/message events), and the interactive
+> **extension-UI sub-protocol** for tool approvals and dialogs. See
+> [`docs/python-sdk-plan.md`](docs/python-sdk-plan.md) for the full design and roadmap.
 
 ## Install (dev)
 
@@ -44,6 +46,26 @@ asyncio.run(main())
 
 A prompt completes on an `agent_end` event with `willRetry == False` (an `agent_end`
 with `willRetry == True` is followed by an automatic retry).
+
+### Tool approvals
+
+Extensions request decisions (allow this tool? pick an option? enter a value?) via the
+extension-UI sub-protocol. Install a handler with `on_ui_request`; without one, the SDK
+safely denies confirmations and cancels other dialogs so the agent never hangs.
+
+```python
+def approve(req):
+    if req.method == "confirm":
+        return True                 # allow
+    if req.method == "select":
+        return (req.options or [None])[0]
+    return None                     # cancel input/editor
+
+agent.on_ui_request(approve)        # see examples/with_approvals.py
+```
+
+The full command surface (`set_model`, `bash`, `compact`, `fork`, `get_session_stats`,
+steering/follow-up modes, …) is available as async methods on `PiAgent`.
 
 ## Tests
 
