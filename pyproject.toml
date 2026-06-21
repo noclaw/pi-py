@@ -21,11 +21,14 @@ dev = [
     "pytest-asyncio>=0.23",
 ]
 
+[project.scripts]
+pi-py = "pi_py_agent.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/earendil-works/pi"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pi_py_sdk"]
+packages = ["src/pi_py_sdk", "src/pi_py_agent"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

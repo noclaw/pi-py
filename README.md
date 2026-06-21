@@ -67,6 +67,22 @@ agent.on_ui_request(approve)        # see examples/with_approvals.py
 The full command surface (`set_model`, `bash`, `compact`, `fork`, `get_session_stats`,
 steering/follow-up modes, …) is available as async methods on `PiAgent`.
 
+## The `pi-py` coding agent
+
+The repo also ships `pi_py_agent`, a small terminal coding agent built entirely on the
+SDK (the agent loop, tools, and model calls all run inside Pi). Installing the package
+provides a `pi-py` command:
+
+```bash
+pi-py                                   # interactive REPL
+pi-py --print "Run the tests and summarize failures"   # one-shot
+pi-py --model anthropic/claude-sonnet-4-20250514 --no-session
+```
+
+It streams assistant text, thinking, and tool activity to the terminal, answers
+approval dialogs interactively, and supports `/help`, `/model`, `/models`, `/new`,
+`/state`, and `/exit`. Ctrl-C aborts the current turn; Ctrl-D exits.
+
 ## Tests
 
 ```bash
