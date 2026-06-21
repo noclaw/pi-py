@@ -7,20 +7,20 @@ well-tested TypeScript agent runtime — over Pi's **RPC mode** (`pi --mode rpc`
 JSONL over stdin/stdout), so the agent loop, tool calling, sessions, compaction,
 retries, and provider auth all run inside Pi. No agent logic is reimplemented in Python.
 
-> Status: the bridge core (transport, JSONL framing, command/response correlation,
-> prompt streaming), the full RPC command surface, the richer event model, the
-> interactive **extension-UI sub-protocol** (tool approvals/dialogs), typed message-block
-> models, and a synchronous facade (`PiAgentSync`). A terminal coding agent (`pi-py`)
-> ships on top. See [`docs/python-sdk-plan.md`](docs/python-sdk-plan.md) for the design.
+It includes the bridge core (transport, strict JSONL framing, id-correlated commands,
+streaming), the full RPC command surface, typed events and message models, the
+interactive **extension-UI sub-protocol** (tool approvals/dialogs), and a synchronous
+facade (`PiAgentSync`). A terminal coding agent (`pi-py`) ships on top. See
+[`docs/python-sdk-plan.md`](docs/python-sdk-plan.md) for the design.
 
-## Install (dev)
+## Install
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install pi-py-sdk
 ```
 
-You also need the Pi runtime for live use:
+This installs the `pi_py_sdk` library and the `pi-py` agent CLI. You also need the Pi
+runtime for live use:
 
 ```bash
 npm i -g @earendil-works/pi-coding-agent   # provides the `pi` binary
@@ -28,6 +28,14 @@ export ANTHROPIC_API_KEY=...               # or another supported provider key
 ```
 
 If `pi` isn't on `PATH`, the SDK falls back to `npx --yes @earendil-works/pi-coding-agent@<pinned>`.
+
+### Development
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
+```
 
 ## Usage
 
@@ -95,9 +103,11 @@ pi-py --print "Run the tests and summarize failures"   # one-shot
 pi-py --model anthropic/claude-sonnet-4-20250514 --no-session
 ```
 
-It streams assistant text, thinking, and tool activity to the terminal, answers
-approval dialogs interactively, and supports `/help`, `/model`, `/models`, `/new`,
-`/state`, and `/exit`. Ctrl-C aborts the current turn; Ctrl-D exits.
+It streams assistant text, thinking, and tool activity (with result previews) to the
+terminal, answers approval dialogs interactively, and supports slash commands (`/help`,
+`/model`, `/models`, `/new`, `/state`, `/compact`, `/clone`, `/fork`, `/exit`). While
+the agent is responding you can **steer** it by typing (or `+text` to queue a
+follow-up). Ctrl-C aborts the current turn; Ctrl-D exits.
 
 ## Tests
 
