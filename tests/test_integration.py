@@ -7,6 +7,7 @@ get_available_models, bash), so they don't need a provider key.
 
 from __future__ import annotations
 
+import os
 import shutil
 
 import pytest
@@ -72,6 +73,10 @@ def test_live_sync_facade():
         assert "sync-ok" in (result.get("output") or "")
 
 
+@pytest.mark.skipif(
+    os.environ.get("PI_LIVE_LLM") != "1",
+    reason="needs a working model; set PI_LIVE_LLM=1 to run",
+)
 @pytest.mark.asyncio
 async def test_live_prompt_completes():
     """Requires a working model (local or keyed). Tolerant of retries; just checks the

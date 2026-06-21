@@ -1,5 +1,7 @@
 # pi-py-sdk
 
+[![CI](https://github.com/noclaw/pi-py/actions/workflows/ci.yml/badge.svg)](https://github.com/noclaw/pi-py/actions/workflows/ci.yml)
+
 Python SDK for the [Pi](https://pi.dev) coding agent. It drives `pi-agent-core` — the
 well-tested TypeScript agent runtime — over Pi's **RPC mode** (`pi --mode rpc`, strict
 JSONL over stdin/stdout), so the agent loop, tool calling, sessions, compaction,
@@ -100,6 +102,18 @@ approval dialogs interactively, and supports `/help`, `/model`, `/models`, `/new
 ## Tests
 
 ```bash
-pytest                 # unit tests (no Node required)
-pytest -m integration  # live tests against a real `pi` (needs the binary + a key)
+pytest                 # unit tests (no Node required); integration is deselected by default
+pytest -m integration  # live tests against a real `pi` (needs the binary on PATH)
 ```
+
+The integration tests avoid LLM calls (state, models, bash), so they don't need a
+provider key. The one prompt-completion test additionally needs a working model and is
+skipped unless `PI_LIVE_LLM=1` is set.
+
+## Releasing
+
+CI (`.github/workflows/ci.yml`) runs the unit suite across Python 3.10–3.13, builds the
+wheel, and best-effort-smokes a real `pi` on every push/PR. Publishing
+(`.github/workflows/publish.yml`) builds and uploads to PyPI when a GitHub Release is
+published — it uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+(OIDC, no token secret), which must be configured once for the repo.
