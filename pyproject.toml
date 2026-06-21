@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pi-py-sdk"
-version = "0.0.1"
+version = "0.1.0"
 description = "Python SDK for the Pi coding agent (pi-agent-core) over its RPC bridge"
 readme = "README.md"
 requires-python = ">=3.10"
