@@ -12,7 +12,7 @@ from pi_py_sdk import MessageUpdateEvent, PiAgentSync, message_text
 
 
 def main(prompt: str) -> None:
-    with PiAgentSync(model="anthropic/claude-sonnet-4-20250514", cwd=".") as agent:
+    with PiAgentSync(model="anthropic/claude-sonnet-4-6", cwd=".") as agent:
         for event in agent.prompt_stream(prompt):
             if isinstance(event, MessageUpdateEvent) and event.assistantMessageEvent:
                 ame = event.assistantMessageEvent

@@ -44,7 +44,7 @@ import asyncio
 from pi_py_sdk import PiAgent, MessageUpdateEvent
 
 async def main():
-    async with PiAgent(model="anthropic/claude-sonnet-4-20250514", cwd=".") as agent:
+    async with PiAgent(model="anthropic/claude-sonnet-4-6", cwd=".") as agent:
         async for ev in agent.prompt_stream("List the Python files here"):
             if isinstance(ev, MessageUpdateEvent) and ev.assistantMessageEvent:
                 ame = ev.assistantMessageEvent
@@ -64,7 +64,7 @@ For non-async code, `PiAgentSync` runs the agent on a background loop and blocks
 ```python
 from pi_py_sdk import PiAgentSync, message_text
 
-with PiAgentSync(model="anthropic/claude-sonnet-4-20250514") as agent:
+with PiAgentSync(model="anthropic/claude-sonnet-4-6") as agent:
     for event in agent.prompt_stream("hello"):
         ...
     for msg in agent.get_messages():        # typed messages
@@ -91,6 +91,36 @@ agent.on_ui_request(approve)        # see examples/with_approvals.py
 The full command surface (`set_model`, `bash`, `compact`, `fork`, `get_session_stats`,
 steering/follow-up modes, …) is available as async methods on `PiAgent`.
 
+## Running the examples
+
+The [`examples/`](examples/) directory has runnable scripts. Make sure `pi` is on
+`PATH` (or available via `npx`) and a provider key is exported first:
+
+```bash
+export ANTHROPIC_API_KEY=...   # or another supported provider key
+```
+
+Each script takes the prompt as a command-line argument (and falls back to a default
+if you omit it):
+
+```bash
+python examples/one_shot.py "List the Python files in this directory"
+python examples/sync_usage.py "Say hello in one short sentence."
+python examples/with_approvals.py "Refactor foo.py and run the tests"
+```
+
+- **`one_shot.py`** — stream a single prompt's text/thinking/tool events to the
+  terminal, with error surfacing (preflight failures, run errors, retries).
+- **`sync_usage.py`** — the same, using the blocking `PiAgentSync` facade, then prints
+  the typed message history.
+- **`with_approvals.py`** — installs an interactive console handler so you can approve
+  tool calls and answer dialogs.
+
+The examples target `anthropic/claude-sonnet-4-6`; edit the `model=` argument to use a
+different model or provider. If a prompt returns blank output, it's usually an
+unavailable model id or a missing/invalid provider key — `one_shot.py` will print a
+hint in that case.
+
 ## The `pi-py` coding agent
 
 The repo also ships `pi_py_agent`, a small terminal coding agent built entirely on the
@@ -100,7 +130,7 @@ provides a `pi-py` command:
 ```bash
 pi-py                                   # interactive REPL
 pi-py --print "Run the tests and summarize failures"   # one-shot
-pi-py --model anthropic/claude-sonnet-4-20250514 --no-session
+pi-py --model anthropic/claude-sonnet-4-6 --no-session
 ```
 
 It streams assistant text, thinking, and tool activity (with result previews) to the

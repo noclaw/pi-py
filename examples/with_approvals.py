@@ -33,7 +33,7 @@ def approve(request: ExtensionUIRequest):
 
 
 async def main(prompt: str) -> None:
-    async with PiAgent(model="anthropic/claude-sonnet-4-20250514", cwd=".") as agent:
+    async with PiAgent(model="anthropic/claude-sonnet-4-6", cwd=".") as agent:
         agent.on_ui_request(approve)
         async for ev in agent.prompt_stream(prompt):
             if isinstance(ev, MessageUpdateEvent) and ev.assistantMessageEvent:
