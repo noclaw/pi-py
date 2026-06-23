@@ -8,16 +8,19 @@ from __future__ import annotations
 
 from .client import PiAgent, UiHandler, UiResult
 from .config import PiConfig
-from .sync import PiAgentSync
+from .model import PiModelClient
+from .sync import PiAgentSync, PiModelClientSync
 from .errors import (
     PiCommandError,
     PiError,
+    PiModelError,
     PiNotStartedError,
     PiProcessError,
     PiTimeoutError,
 )
 from .protocol import (
     DIALOG_METHODS,
+    STREAM_TERMINAL_TYPES,
     AgentEndEvent,
     AgentStartEvent,
     AssistantMessage,
@@ -37,6 +40,7 @@ from .protocol import (
     QueueUpdateEvent,
     Response,
     SessionInfoChangedEvent,
+    StreamEvent,
     TextContent,
     ThinkingContent,
     ThinkingLevelChangedEvent,
@@ -51,13 +55,16 @@ from .protocol import (
     parse_event,
     parse_message,
     parse_messages,
+    parse_stream_event,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "PiAgent",
     "PiAgentSync",
+    "PiModelClient",
+    "PiModelClientSync",
     "PiConfig",
     "UiHandler",
     "UiResult",
@@ -66,6 +73,7 @@ __all__ = [
     "PiProcessError",
     "PiTimeoutError",
     "PiCommandError",
+    "PiModelError",
     "Event",
     "AgentStartEvent",
     "AgentEndEvent",
@@ -87,6 +95,9 @@ __all__ = [
     "ExtensionErrorEvent",
     "ExtensionUIRequest",
     "DIALOG_METHODS",
+    "StreamEvent",
+    "STREAM_TERMINAL_TYPES",
+    "parse_stream_event",
     "Response",
     "parse_event",
     "TextContent",

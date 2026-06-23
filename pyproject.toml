@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pi-py-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python SDK for the Pi coding agent (pi-agent-core) over its RPC bridge"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,6 +41,11 @@ Homepage = "https://github.com/earendil-works/pi"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pi_py_sdk", "src/pi_py_agent"]
+# The Node model-streaming shim is a data file inside the package; make sure it ships.
+artifacts = ["src/pi_py_sdk/_shim/*.mjs"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/pi_py_sdk/_shim/stream.mjs" = "pi_py_sdk/_shim/stream.mjs"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

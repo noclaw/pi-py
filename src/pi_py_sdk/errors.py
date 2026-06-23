@@ -35,3 +35,12 @@ class PiCommandError(PiError):
         self.command = command
         self.error = error
         super().__init__(f"command {command!r} failed: {error}")
+
+
+class PiModelError(PiError):
+    """A model stream failed at the shim level (e.g. unknown model id, a thrown error).
+
+    This is distinct from a model-produced ``error`` *event* (rejected auth, content
+    filtering), which is delivered in-band as a terminal :class:`~pi_py_sdk.protocol.StreamEvent`
+    carrying the failed assistant message.
+    """

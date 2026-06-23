@@ -13,6 +13,17 @@ interactive **extension-UI sub-protocol** (tool approvals/dialogs), and a synchr
 facade (`PiAgentSync`). A terminal coding agent (`pi-py`) ships on top. See
 [`docs/python-sdk-plan.md`](docs/python-sdk-plan.md) for the design.
 
+There are **two clients, at two levels**:
+
+- **`PiAgent`** drives the **full Pi agent** over `pi --mode rpc` — loop, tools,
+  sessions, compaction. Use it to run Pi as-is from Python.
+- **`PiModelClient`** exposes just the **raw model layer**: it streams a single
+  assistant response (text, thinking, tool calls) from [`@earendil-works/pi-ai`](https://pi.dev),
+  with no agent loop or tools. This is the seam for building your *own* agent loop in
+  Python while still delegating providers, auth, transports, and local models to pi-ai.
+  Neither client reimplements agent logic — with `PiModelClient`, only the LLM call
+  crosses the boundary.
+
 ## Install
 
 ```bash
@@ -27,7 +38,12 @@ npm i -g @earendil-works/pi-coding-agent   # provides the `pi` binary
 export ANTHROPIC_API_KEY=...               # or another supported provider key
 ```
 
-If `pi` isn't on `PATH`, the SDK falls back to `npx --yes @earendil-works/pi-coding-agent@<pinned>`.
+If `pi` isn't on `PATH`, `PiAgent` falls back to `npx --yes @earendil-works/pi-coding-agent@<pinned>`.
+
+`PiModelClient` additionally needs **Node** on `PATH` and resolves the bundled
+`@earendil-works/pi-ai` package from the global `pi` install (or set `PI_AI_DIR`). It can
+authenticate from a provider env var **or** from an existing Pi OAuth login
+(`~/.pi/agent/auth.json`, e.g. after `/login` in `pi`).
 
 ### Development
 
@@ -71,6 +87,49 @@ with PiAgentSync(model="anthropic/claude-sonnet-4-6") as agent:
         print(msg.role, message_text(msg))
 ```
 
+### Model streaming (low-level)
+
+`PiModelClient` streams a single assistant response straight from pi-ai — no agent loop,
+no tools running inside Pi. You provide the context (system prompt + messages + tool
+definitions) and own the turn structure; pi-ai handles the provider call. This is the
+foundation for building a native-Python agent loop.
+
+```python
+import asyncio
+from pi_py_sdk import PiModelClient
+
+async def main():
+    async with PiModelClient() as client:
+        async for ev in client.stream(
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            messages=[{"role": "user", "content": "Say hello", "timestamp": 0}],
+            reasoning="low",                # optional thinking level
+        ):
+            if ev.type == "text_delta":
+                print(ev.delta, end="", flush=True)
+
+asyncio.run(main())
+```
+
+Every stream ends with a terminal event (`ev.is_terminal`): `done` carries the final
+`AssistantMessage` on `ev.final_message`, `error` carries a failed message (rejected
+auth, content filtering). A shim-level failure (e.g. unknown model id) raises
+`PiModelError`. Tool calls surface as `toolcall_end` events with a parsed `ev.toolCall`.
+Other methods: `complete()` (drain to the final message), `list_models()`,
+`list_providers()`, and a blocking `PiModelClientSync` facade.
+
+```python
+# Pass tool definitions and let the model decide to call one:
+tools = [{"name": "get_weather", "description": "Current weather",
+          "parameters": {"type": "object", "properties": {"city": {"type": "string"}},
+                         "required": ["city"]}}]
+async for ev in client.stream(provider="anthropic", model="claude-sonnet-4-6",
+                              messages=messages, tools=tools):
+    if ev.type == "toolcall_end":
+        print(ev.toolCall.name, ev.toolCall.arguments)
+```
+
 ### Tool approvals
 
 Extensions request decisions (allow this tool? pick an option? enter a value?) via the
@@ -107,6 +166,7 @@ if you omit it):
 python examples/one_shot.py "List the Python files in this directory"
 python examples/sync_usage.py "Say hello in one short sentence."
 python examples/with_approvals.py "Refactor foo.py and run the tests"
+python examples/model_stream.py "Say hello in one short sentence."
 ```
 
 - **`one_shot.py`** — stream a single prompt's text/thinking/tool events to the
@@ -115,6 +175,8 @@ python examples/with_approvals.py "Refactor foo.py and run the tests"
   the typed message history.
 - **`with_approvals.py`** — installs an interactive console handler so you can approve
   tool calls and answer dialogs.
+- **`model_stream.py`** — the low-level `PiModelClient`: stream a raw model response
+  (no agent loop or tools), the building block for a custom Python agent loop.
 
 The examples target `anthropic/claude-sonnet-4-6`; edit the `model=` argument to use a
 different model or provider. If a prompt returns blank output, it's usually an
@@ -146,8 +208,9 @@ pytest                 # unit tests (no Node required); integration is deselecte
 pytest -m integration  # live tests against a real `pi` (needs the binary on PATH)
 ```
 
-The integration tests avoid LLM calls (state, models, bash), so they don't need a
-provider key. The one prompt-completion test additionally needs a working model and is
+Most integration tests avoid LLM calls (state, models, bash) and don't need a provider
+key; `PiModelClient`'s also need `node` on `PATH`. The live model-call tests
+(prompt completion, `PiModelClient.stream`) need a working model/credentials and are
 skipped unless `PI_LIVE_LLM=1` is set.
 
 ## Releasing

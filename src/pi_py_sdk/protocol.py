@@ -308,3 +308,66 @@ def message_text(message: Any) -> str:
     if isinstance(content, list):
         return "".join(_block_text(block) for block in content)
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Model streaming (pi-ai's AssistantMessageEvent, surfaced by PiModelClient)
+# ---------------------------------------------------------------------------
+#
+# These come from the low-level ``_shim/stream.mjs`` bridge to ``@earendil-works/pi-ai``
+# (not the ``pi --mode rpc`` agent). One ``StreamEvent`` per pi-ai event; the stream is
+# terminated by a ``done`` or ``error`` event carrying the final assistant message.
+
+#: Event ``type`` values that terminate a model stream.
+STREAM_TERMINAL_TYPES = frozenset({"done", "error"})
+
+
+class StreamEvent(_Wire):
+    """One event from a model stream.
+
+    A single permissive model (like :class:`AssistantMessageEvent`) covers the whole
+    pi-ai union, discriminated on ``type``:
+
+    * ``start`` — stream opened; ``partial`` holds the (empty) assistant message.
+    * ``text_start`` / ``text_delta`` / ``text_end`` — assistant text; ``delta`` for the
+      incremental piece, ``content`` for the completed block.
+    * ``thinking_start`` / ``thinking_delta`` / ``thinking_end`` — reasoning, same shape.
+    * ``toolcall_start`` / ``toolcall_delta`` / ``toolcall_end`` — a tool call;
+      ``toolCall`` holds the finished call on ``toolcall_end``, ``delta`` carries partial
+      JSON arguments on ``toolcall_delta``.
+    * ``done`` — success; ``message`` holds the final :class:`AssistantMessage`.
+    * ``error`` — failure (``reason`` is "error" or "aborted"); ``error`` holds the final
+      message with ``stopReason``/``errorMessage`` set.
+
+    ``partial`` (present on the non-terminal events) is always the full message so far,
+    so consumers never need to accumulate deltas themselves.
+    """
+
+    type: str
+    contentIndex: int | None = None
+    delta: str | None = None
+    content: str | None = None
+    reason: str | None = None
+    partial: AssistantMessage | None = None
+    toolCall: ToolCall | None = None
+    message: AssistantMessage | None = None
+    error: AssistantMessage | None = None
+
+    @property
+    def is_terminal(self) -> bool:
+        """True for the ``done``/``error`` event that ends the stream."""
+        return self.type in STREAM_TERMINAL_TYPES
+
+    @property
+    def final_message(self) -> AssistantMessage | None:
+        """The final assistant message on a terminal event (``message`` or ``error``)."""
+        if self.type == "done":
+            return self.message
+        if self.type == "error":
+            return self.error
+        return None
+
+
+def parse_stream_event(data: dict[str, Any]) -> StreamEvent:
+    """Parse a decoded pi-ai stream event into a :class:`StreamEvent`."""
+    return StreamEvent.model_validate(data)

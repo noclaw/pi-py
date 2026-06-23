@@ -14,18 +14,30 @@ subprocess. This package is a transport + protocol + ergonomics layer over that
 subprocess. When extending it, prefer exposing an existing Pi RPC command/event over
 adding behavior here.
 
+**Two clients, two levels:**
+- `PiAgent` (`client.py`) drives the **full agent** over `pi --mode rpc` — loop, tools,
+  sessions, compaction. Use it to run Pi as-is from Python.
+- `PiModelClient` (`model.py`) exposes just the **raw model layer**: it spawns
+  `_shim/stream.mjs`, a small Node bridge to `@earendil-works/pi-ai`'s `streamSimple`.
+  This is the seam for building a *native-Python* agent loop (the loop and tools live in
+  the consumer, e.g. the `py-coding-agent` project) while still delegating providers,
+  auth, transports, and local models to pi-ai. It still reimplements no agent logic —
+  only the LLM call crosses the boundary.
+
 ## Layout
 
 ```
 src/pi_py_sdk/        # the SDK (the bridge)
   jsonl.py            # strict LF-only JSONL framing (mirrors Pi's jsonl.ts)
   transport.py        # async subprocess lifecycle, stdout framing, stderr ring buffer
-  protocol.py         # Pydantic models: commands, responses, events, messages
-  client.py           # PiAgent — async API, id-correlated requests, prompt streaming
-  sync.py             # PiAgentSync — blocking facade over a background-thread loop
+  protocol.py         # Pydantic models: commands, responses, events, messages, StreamEvent
+  client.py           # PiAgent — full-agent async API over `pi --mode rpc`
+  model.py            # PiModelClient — raw pi-ai model streaming over the Node shim
+  _shim/stream.mjs    # Node bridge: pi-ai streamSimple <-> JSONL (used by PiModelClient)
+  sync.py             # PiAgentSync / PiModelClientSync — blocking facades
   config.py           # PiConfig (CLI args + env)
-  _discovery.py       # resolve `pi`: PATH -> npx fallback (pinned version)
-  errors.py           # PiError hierarchy
+  _discovery.py       # resolve `pi` (PATH -> npx); resolve node + pi-ai dir for the shim
+  errors.py           # PiError hierarchy (incl. PiModelError)
 src/pi_py_agent/      # the terminal coding agent (consumes the SDK only)
   render.py           # stream events -> terminal (text/thinking/tool/queue)
   app.py              # async REPL + one-shot runner, mid-turn steering, approvals
@@ -52,6 +64,21 @@ docs/python-sdk-plan.md   # full design + roadmap
   BashExecutionMessage that is only sent to the LLM on the *next* prompt.
 - **`extension_ui_response` is not id-correlated** — it's written directly to stdin, not
   via the request/response (`_send`) path.
+- **The model shim imports pi-ai by file path, not bare specifier.** pi-ai's
+  `package.json` declares an *import-only* `exports` map, so `require.resolve(...)` /
+  bare `import "@earendil-works/pi-ai"` fail. The shim reads pi-ai's `package.json`
+  `exports` and imports the resolved `dist/*.js` via `pathToFileURL`. `_discovery.py`
+  finds the pi-ai *directory* (bundled under the global `pi` install, or `PI_AI_DIR`).
+- **Shim credential order:** caller `apiKey` > provider env var (pi-ai's own
+  `getEnvApiKey`) > the coding agent's OAuth login in `~/.pi/agent/auth.json` (refreshed
+  via pi-ai's `oauth` module and written back). OAuth tokens authenticate when passed as
+  `options.apiKey` (anthropic detects the `sk-ant-oat` prefix). Still "auth lives in Pi."
+- **Shim stream lifecycle:** each `stream` request runs concurrently keyed by `id`;
+  closing/cancelling a `PiModelClient.stream()` sends `{type:"abort", id}`. pi-ai
+  terminates every stream with a `done`/`error` event carrying the final message, so the
+  Python side never accumulates deltas. A *thrown* shim error (bad model id) comes back
+  as a top-level `stream_error` line and raises `PiModelError`; a model-produced `error`
+  *event* is delivered in-band as a terminal `StreamEvent`.
 
 ## Dev commands
 
