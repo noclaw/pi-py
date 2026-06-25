@@ -42,7 +42,12 @@ if (!piAiDir) {
 //     which fails because pi-ai declares an import-only `exports` map) ---------
 function loadPiAi(dir) {
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
-  const entryRel = pkg.exports?.["."]?.import ?? "./dist/index.js";
+  // The global API this shim uses (registerBuiltInApiProviders / getProviders /
+  // getModel / getModels / streamSimple / getEnvApiKey) moved off the main entry
+  // into the "./compat" entrypoint in pi-ai 0.80. Prefer "./compat" when present;
+  // fall back to "." for older builds that still expose those names on the main entry.
+  const entryRel =
+    pkg.exports?.["./compat"]?.import ?? pkg.exports?.["."]?.import ?? "./dist/index.js";
   const oauthRel = pkg.exports?.["./oauth"]?.import ?? "./dist/oauth.js";
   const toUrl = (rel) => pathToFileURL(path.join(dir, rel)).href;
   return Promise.all([import(toUrl(entryRel)), import(toUrl(oauthRel))]);

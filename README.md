@@ -45,6 +45,12 @@ If `pi` isn't on `PATH`, `PiAgent` falls back to `npx --yes @earendil-works/pi-c
 authenticate from a provider env var **or** from an existing Pi OAuth login
 (`~/.pi/agent/auth.json`, e.g. after `/login` in `pi`).
 
+The model shim uses pi-ai's legacy global API (`registerBuiltInApiProviders`,
+`getProviders`/`getModels`, `streamSimple`). In pi-ai **0.80** that surface moved off the
+main entry into the `./compat` entrypoint, so the shim imports `./compat` when present and
+falls back to `.` for older builds — both are supported. Config/credentials live under
+`~/.pi/agent/`; the SDK keeps no state of its own under `~/.pi-py`.
+
 ### Development
 
 ```bash

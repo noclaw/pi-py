@@ -58,7 +58,7 @@ from .protocol import (
     parse_stream_event,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "PiAgent",
